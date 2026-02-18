@@ -1,0 +1,38 @@
+name: baby_tracker
+description: "新生儿吃喝拉撒记录 App（iOS 首版）"
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.11.0
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.8
+  flutter_riverpod: ^3.0.3
+  drift: ^2.29.0
+  drift_flutter: ^0.2.6
+  sqlite3_flutter_libs: ^0.5.39
+  path_provider: ^2.1.5
+  path: ^1.9.1
+  uuid: ^4.5.1
+  intl: ^0.20.2
+  speech_to_text: ^7.3.0
+  flutter_sound: ^9.30.0
+  flutter_local_notifications: ^19.5.0
+  flutter_timezone: ^4.1.1
+  timezone: ^0.10.1
+  shared_preferences: ^2.5.3
+  http: ^1.5.0
+  permission_handler: ^12.0.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+  drift_dev: ^2.29.0
+  build_runner: ^2.9.0
+
+flutter:
+  uses-material-design: true

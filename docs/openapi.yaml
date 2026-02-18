@@ -1,0 +1,235 @@
+openapi: 3.0.3
+info:
+  title: Walnie Baby Tracker API
+  version: 1.0.0
+  description: |
+    云端事件存储与提醒策略接口，用于 Flutter 客户端切换到远程 MySQL。
+servers:
+  - url: http://127.0.0.1:8080
+  - url: http://47.100.221.135:8080
+paths:
+  /health:
+    get:
+      summary: Health check
+      responses:
+        '200':
+          description: Healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status, now]
+                properties:
+                  status:
+                    type: string
+                    example: ok
+                  now:
+                    type: string
+                    format: date-time
+
+  /v1/events:
+    post:
+      summary: Create or upsert event
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BabyEvent'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [id]
+                properties:
+                  id:
+                    type: string
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    get:
+      summary: List events by time range
+      parameters:
+        - in: query
+          name: from
+          required: true
+          schema:
+            type: string
+            format: date-time
+        - in: query
+          name: to
+          required: true
+          schema:
+            type: string
+            format: date-time
+      responses:
+        '200':
+          description: Event list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/BabyEvent'
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /v1/events/latest:
+    get:
+      summary: Get latest event by type
+      parameters:
+        - in: query
+          name: type
+          required: true
+          schema:
+            type: string
+            enum: [feed, poop, pee, diaper, pump]
+      responses:
+        '200':
+          description: Latest event
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BabyEvent'
+        '404':
+          description: No event found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /v1/summary/today:
+    get:
+      summary: Get today's summary (UTC day)
+      responses:
+        '200':
+          description: Today's counters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TodaySummary'
+
+  /v1/reminder-policy:
+    get:
+      summary: Get reminder policy
+      responses:
+        '200':
+          description: Policy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReminderPolicy'
+
+    post:
+      summary: Upsert reminder policy
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReminderPolicy'
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReminderPolicy'
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+components:
+  schemas:
+    BabyEvent:
+      type: object
+      required:
+        - id
+        - type
+        - occurredAt
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          type: string
+        type:
+          type: string
+          enum: [feed, poop, pee, diaper, pump]
+        occurredAt:
+          type: string
+          format: date-time
+        feedMethod:
+          type: string
+          enum: [breastLeft, breastRight, bottleFormula, bottleBreastmilk, mixed]
+          nullable: true
+        durationMin:
+          type: integer
+          nullable: true
+        amountMl:
+          type: integer
+          nullable: true
+        pumpStartAt:
+          type: string
+          format: date-time
+          nullable: true
+        pumpEndAt:
+          type: string
+          format: date-time
+          nullable: true
+        note:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    TodaySummary:
+      type: object
+      required: [feedCount, poopCount, peeCount, diaperCount, pumpCount]
+      properties:
+        feedCount:
+          type: integer
+        poopCount:
+          type: integer
+        peeCount:
+          type: integer
+        diaperCount:
+          type: integer
+        pumpCount:
+          type: integer
+        latestFeedAt:
+          type: string
+          format: date-time
+          nullable: true
+
+    ReminderPolicy:
+      type: object
+      required: [intervalHours]
+      properties:
+        intervalHours:
+          type: integer
+          minimum: 1
+          maximum: 6
+
+    ErrorResponse:
+      type: object
+      properties:
+        message:
+          type: string
