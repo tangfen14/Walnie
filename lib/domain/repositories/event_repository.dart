@@ -6,4 +6,6 @@ abstract class EventRepository {
   Future<List<BabyEvent>> list(DateTime from, DateTime to);
 
   Future<BabyEvent?> latest(EventType type);
+
+  Future<void> deleteById(String id);
 }

@@ -57,6 +57,13 @@ class DriftEventRepository implements EventRepository {
     return _toDomain(row);
   }
 
+  @override
+  Future<void> deleteById(String id) async {
+    await (_database.delete(
+      _database.eventRecords,
+    )..where((table) => table.id.equals(id))).go();
+  }
+
   BabyEvent _toDomain(EventRecord row) {
     return BabyEvent(
       id: row.id,

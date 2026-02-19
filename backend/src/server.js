@@ -226,6 +226,27 @@ app.get(
   }),
 );
 
+app.delete(
+  '/v1/events/:id',
+  asyncRoute(async (req, res) => {
+    const id = parseOptionalString(req.params.id, 'id');
+    if (id == null) {
+      throw makeHttpError(400, 'id is required');
+    }
+
+    const [result] = await pool.execute('DELETE FROM events WHERE id = ?', [
+      id,
+    ]);
+
+    if (result.affectedRows === 0) {
+      res.status(404).json({ message: 'not found' });
+      return;
+    }
+
+    res.status(204).end();
+  }),
+);
+
 app.get(
   '/v1/events/latest',
   asyncRoute(async (req, res) => {

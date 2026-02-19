@@ -1,5 +1,6 @@
 import 'package:baby_tracker/application/usecases/answer_query_use_case.dart';
 import 'package:baby_tracker/application/usecases/create_event_use_case.dart';
+import 'package:baby_tracker/application/usecases/delete_event_use_case.dart';
 import 'package:baby_tracker/application/usecases/get_timeline_use_case.dart';
 import 'package:baby_tracker/application/usecases/get_today_summary_use_case.dart';
 import 'package:baby_tracker/application/usecases/parse_voice_command_use_case.dart';
@@ -90,6 +91,13 @@ final voiceCommandServiceProvider = Provider<VoiceCommandService>((ref) {
 
 final createEventUseCaseProvider = Provider<CreateEventUseCase>((ref) {
   return CreateEventUseCase(
+    eventRepository: ref.watch(eventRepositoryProvider),
+    reminderService: ref.watch(reminderServiceProvider),
+  );
+});
+
+final deleteEventUseCaseProvider = Provider<DeleteEventUseCase>((ref) {
+  return DeleteEventUseCase(
     eventRepository: ref.watch(eventRepositoryProvider),
     reminderService: ref.watch(reminderServiceProvider),
   );

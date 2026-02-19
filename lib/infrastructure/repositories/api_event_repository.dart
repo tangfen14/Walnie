@@ -87,6 +87,24 @@ class ApiEventRepository implements EventRepository {
     return BabyEvent.fromJson(decoded);
   }
 
+  @override
+  Future<void> deleteById(String id) async {
+    final response = await _httpClient.delete(
+      _buildUri('/v1/events/${Uri.encodeComponent(id)}'),
+      headers: _jsonHeaders,
+    );
+
+    if (response.statusCode == 200 || response.statusCode == 204) {
+      return;
+    }
+
+    throw ApiRepositoryException(
+      '删除事件失败',
+      statusCode: response.statusCode,
+      responseBody: response.body,
+    );
+  }
+
   Uri _buildUri(String path, [Map<String, String>? query]) {
     final basePath = _baseUri.path.endsWith('/')
         ? _baseUri.path.substring(0, _baseUri.path.length - 1)
@@ -134,6 +152,24 @@ class ApiRepositoryException implements Exception {
   @override
   String toString() {
     final code = statusCode == null ? '' : ' (HTTP $statusCode)';
-    return '$message$code${responseBody == null ? '' : ': $responseBody'}';
+    final body = _readableBody(responseBody);
+    return '$message$code${body == null ? '' : ': $body'}';
+  }
+
+  String? _readableBody(String? raw) {
+    if (raw == null || raw.trim().isEmpty) {
+      return null;
+    }
+
+    final text = raw.trim();
+    if (text.startsWith('<!DOCTYPE') || text.startsWith('<html')) {
+      return '服务端返回了非 JSON 错误页面';
+    }
+
+    const maxLength = 180;
+    if (text.length <= maxLength) {
+      return text;
+    }
+    return '${text.substring(0, maxLength)}...';
   }
 }

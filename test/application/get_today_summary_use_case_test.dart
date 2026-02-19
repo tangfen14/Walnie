@@ -32,6 +32,11 @@ class _MemoryEventRepository implements EventRepository {
         )
         .toList(growable: false);
   }
+
+  @override
+  Future<void> deleteById(String id) async {
+    items.removeWhere((event) => event.id == id);
+  }
 }
 
 void main() {

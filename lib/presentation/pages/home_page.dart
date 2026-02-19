@@ -38,7 +38,14 @@ class HomePage extends ConsumerWidget {
       body: homeStateAsync.when(
         data: (state) => _HomeContent(
           state: state,
-          onAddEvent: (type) => _openManualEditor(context, ref, type),
+          onAddEvent: (type) =>
+              _openEventEditor(context, ref, initialType: type),
+          onEditEvent: (event) => _openEventEditor(
+            context,
+            ref,
+            initialType: event.type,
+            initialEvent: event,
+          ),
           onSelectFilter: (type) {
             final nextType = state.filterType == type ? null : type;
             ref.read(homeControllerProvider.notifier).setFilter(nextType);
@@ -138,21 +145,30 @@ class HomePage extends ConsumerWidget {
     }
   }
 
-  Future<void> _openManualEditor(
+  Future<void> _openEventEditor(
     BuildContext context,
-    WidgetRef ref,
-    EventType eventType,
-  ) async {
+    WidgetRef ref, {
+    required EventType initialType,
+    BabyEvent? initialEvent,
+  }) async {
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       showDragHandle: true,
       builder: (context) {
         return EventEditorSheet(
-          initialType: eventType,
+          initialType: initialType,
+          initialEvent: initialEvent,
           onSubmit: (event) {
             return ref.read(homeControllerProvider.notifier).addEvent(event);
           },
+          onDelete: initialEvent == null
+              ? null
+              : (event) {
+                  return ref
+                      .read(homeControllerProvider.notifier)
+                      .deleteEvent(event);
+                },
         );
       },
     );
@@ -462,12 +478,14 @@ class _HomeContent extends StatelessWidget {
   const _HomeContent({
     required this.state,
     required this.onAddEvent,
+    required this.onEditEvent,
     required this.onSelectFilter,
     required this.onRefresh,
   });
 
   final HomeState state;
   final void Function(EventType type) onAddEvent;
+  final void Function(BabyEvent event) onEditEvent;
   final void Function(EventType type) onSelectFilter;
   final Future<void> Function() onRefresh;
 
@@ -615,7 +633,9 @@ class _HomeContent extends StatelessWidget {
               child: const Text('暂无记录，先新增一条吧。'),
             )
           else
-            ...state.timeline.map(_TimelineCard.new),
+            ...state.timeline.map(
+              (event) => _TimelineCard(event, onTap: () => onEditEvent(event)),
+            ),
         ],
       ),
     );
@@ -623,54 +643,59 @@ class _HomeContent extends StatelessWidget {
 }
 
 class _TimelineCard extends StatelessWidget {
-  const _TimelineCard(this.event);
+  const _TimelineCard(this.event, {this.onTap});
 
   final BabyEvent event;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(14),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(_iconFor(event.type)),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Text(
-                      event.type.labelZh,
-                      style: Theme.of(context).textTheme.titleMedium,
-                    ),
-                    const Spacer(),
-                    Text(
-                      DateFormat('MM-dd HH:mm').format(event.occurredAt),
-                      style: Theme.of(
-                        context,
-                      ).textTheme.bodySmall?.copyWith(color: Colors.black54),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  _subtitleFor(event),
-                  style: Theme.of(
-                    context,
-                  ).textTheme.bodyMedium?.copyWith(color: Colors.black87),
-                ),
-              ],
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 10),
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(14),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(_iconFor(event.type)),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Text(
+                        event.type.labelZh,
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
+                      const Spacer(),
+                      Text(
+                        DateFormat('MM-dd HH:mm').format(event.occurredAt),
+                        style: Theme.of(
+                          context,
+                        ).textTheme.bodySmall?.copyWith(color: Colors.black54),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    _subtitleFor(event),
+                    style: Theme.of(
+                      context,
+                    ).textTheme.bodyMedium?.copyWith(color: Colors.black87),
+                  ),
+                ],
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

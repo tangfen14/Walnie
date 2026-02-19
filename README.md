@@ -79,7 +79,32 @@ flutter run --dart-define=EVENT_API_BASE_URL=http://47.100.221.135:8080
 不传 `EVENT_API_BASE_URL` 时，默认仍使用本地 SQLite（兼容原有行为）。
 `ios/Runner/Info.plist` 已为 `47.100.221.135` 和 `127.0.0.1` 配置 ATS 例外，允许 HTTP 联调。
 
-## 5. LLM 兜底配置
+## 5. iOS 双机安装验证（云端同步）
+
+按以下顺序执行：
+
+```bash
+# 1) 预检（依赖 + 代码生成 + 测试）
+./scripts/ios_preflight.sh
+
+# 2) 后端健康检查
+./scripts/check_backend_health.sh
+
+# 3) 固定云端地址构建 iOS Release
+./scripts/build_ios_release_cloud.sh
+```
+
+默认云端地址为 `http://47.100.221.135:8080`，可通过脚本参数覆盖。
+
+更多安装与双机验收步骤见：
+- `docs/ios-install-validation.md`
+- `docs/ios-xcode-install-checklist.md`（Xcode 逐步勾选版）
+
+VSCode 调试配置：
+- `Walnie (Cloud API)`：云端调试模式
+- `Walnie (Cloud API Release)`：云端 release 模式
+
+## 6. LLM 兜底配置
 
 默认参数在：
 - `lib/infrastructure/voice/llm_fallback_parser.dart`
@@ -96,7 +121,7 @@ flutter run --dart-define=EVENT_API_BASE_URL=http://47.100.221.135:8080
 - `LLM_HTTP_TIMEOUT_MS`
 - `LLM_TEMPERATURE`
 
-## 测试
+## 7. 测试
 
 ```bash
 flutter analyze

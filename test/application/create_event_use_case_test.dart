@@ -32,6 +32,11 @@ class _FakeEventRepository implements EventRepository {
         )
         .toList(growable: false);
   }
+
+  @override
+  Future<void> deleteById(String id) async {
+    saved.removeWhere((event) => event.id == id);
+  }
 }
 
 class _FakeReminderService implements ReminderService {

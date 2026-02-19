@@ -86,4 +86,19 @@ void main() {
       throwsA(isA<ApiRepositoryException>()),
     );
   });
+
+  test('delete sends request to remote API', () async {
+    final client = MockClient((http.Request request) async {
+      expect(request.method, 'DELETE');
+      expect(request.url.path, '/v1/events/event-3');
+      return http.Response('', 204);
+    });
+
+    final repository = ApiEventRepository(
+      baseUrl: 'http://api.example.com',
+      httpClient: client,
+    );
+
+    await repository.deleteById('event-3');
+  });
 }

@@ -6,7 +6,16 @@
       "request": "launch",
       "type": "dart",
       "toolArgs": [
-        "--dart-define=EVENT_API_BASE_URL=http://47.100.221.135"
+        "--dart-define=EVENT_API_BASE_URL=http://47.100.221.135:8080"
+      ]
+    },
+    {
+      "name": "Walnie (Cloud API Release)",
+      "request": "launch",
+      "type": "dart",
+      "flutterMode": "release",
+      "toolArgs": [
+        "--dart-define=EVENT_API_BASE_URL=http://47.100.221.135:8080"
       ]
     },
     {

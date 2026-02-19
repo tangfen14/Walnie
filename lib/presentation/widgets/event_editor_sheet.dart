@@ -9,12 +9,14 @@ class EventEditorSheet extends StatefulWidget {
     this.initialEvent,
     this.headerText,
     required this.onSubmit,
+    this.onDelete,
   });
 
   final EventType initialType;
   final BabyEvent? initialEvent;
   final String? headerText;
   final Future<void> Function(BabyEvent event) onSubmit;
+  final Future<void> Function(BabyEvent event)? onDelete;
 
   @override
   State<EventEditorSheet> createState() => _EventEditorSheetState();
@@ -263,6 +265,20 @@ class _EventEditorSheetState extends State<EventEditorSheet> {
                       : const Text('确认保存'),
                 ),
               ),
+              if (widget.initialEvent != null && widget.onDelete != null) ...[
+                const SizedBox(height: 8),
+                SizedBox(
+                  width: double.infinity,
+                  child: TextButton.icon(
+                    onPressed: _submitting ? null : _delete,
+                    icon: const Icon(Icons.delete_outline),
+                    label: const Text('删除记录'),
+                    style: TextButton.styleFrom(
+                      foregroundColor: Theme.of(context).colorScheme.error,
+                    ),
+                  ),
+                ),
+              ],
             ],
           ),
         ),
@@ -340,25 +356,40 @@ class _EventEditorSheetState extends State<EventEditorSheet> {
     });
 
     try {
+      final isFeed = _eventType == EventType.feed;
+      final isPump = _eventType == EventType.pump;
       final trimmedNote = _noteController.text.trim();
       final amountMl = int.tryParse(_amountController.text.trim());
       final durationMin = int.tryParse(_durationController.text.trim());
-      final occurredAt = _eventType == EventType.pump
-          ? (_pumpStartAt ?? _occurredAt)
-          : _occurredAt;
+      final occurredAt = isPump ? (_pumpStartAt ?? _occurredAt) : _occurredAt;
 
-      final event = BabyEvent(
-        type: _eventType,
-        occurredAt: occurredAt,
-        feedMethod: _eventType == EventType.feed ? _feedMethod : null,
-        durationMin: _eventType == EventType.feed ? durationMin : null,
-        amountMl: (_eventType == EventType.feed || _eventType == EventType.pump)
-            ? amountMl
-            : null,
-        pumpStartAt: _eventType == EventType.pump ? _pumpStartAt : null,
-        pumpEndAt: _eventType == EventType.pump ? _pumpEndAt : null,
-        note: trimmedNote.isEmpty ? null : trimmedNote,
-      );
+      final event = widget.initialEvent != null
+          ? widget.initialEvent!.copyWith(
+              type: _eventType,
+              occurredAt: occurredAt,
+              feedMethod: isFeed ? _feedMethod : null,
+              durationMin: isFeed ? durationMin : null,
+              amountMl: (isFeed || isPump) ? amountMl : null,
+              pumpStartAt: isPump ? _pumpStartAt : null,
+              pumpEndAt: isPump ? _pumpEndAt : null,
+              note: trimmedNote.isEmpty ? null : trimmedNote,
+              clearFeedMethod: !isFeed,
+              clearDuration: !isFeed,
+              clearAmount: !(isFeed || isPump),
+              clearPumpStartAt: !isPump,
+              clearPumpEndAt: !isPump,
+              clearNote: trimmedNote.isEmpty,
+            )
+          : BabyEvent(
+              type: _eventType,
+              occurredAt: occurredAt,
+              feedMethod: isFeed ? _feedMethod : null,
+              durationMin: isFeed ? durationMin : null,
+              amountMl: (isFeed || isPump) ? amountMl : null,
+              pumpStartAt: isPump ? _pumpStartAt : null,
+              pumpEndAt: isPump ? _pumpEndAt : null,
+              note: trimmedNote.isEmpty ? null : trimmedNote,
+            );
 
       await widget.onSubmit(event);
       if (mounted) {
@@ -371,6 +402,62 @@ class _EventEditorSheetState extends State<EventEditorSheet> {
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text(error.message)));
+    } finally {
+      if (mounted) {
+        setState(() {
+          _submitting = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _delete() async {
+    final event = widget.initialEvent;
+    final onDelete = widget.onDelete;
+    if (event == null || onDelete == null) {
+      return;
+    }
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('确认删除'),
+          content: const Text('删除后无法恢复，确定要删除这条记录吗？'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('删除'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirmed != true || !mounted) {
+      return;
+    }
+
+    setState(() {
+      _submitting = true;
+    });
+
+    try {
+      await onDelete(event);
+      if (mounted) {
+        Navigator.of(context).pop();
+      }
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('删除失败：$error')));
     } finally {
       if (mounted) {
         setState(() {
