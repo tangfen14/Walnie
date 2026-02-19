@@ -16,6 +16,10 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   const appEnvironment = AppEnvironment.fromDartDefine();
+  debugPrint(
+    'Walnie startup: useRemoteBackend=${appEnvironment.useRemoteBackend}, '
+    'EVENT_API_BASE_URL=${appEnvironment.normalizedEventApiBaseUrl}',
+  );
   final sharedPreferences = await SharedPreferences.getInstance();
   final database = AppDatabase();
   final httpClient = http.Client();

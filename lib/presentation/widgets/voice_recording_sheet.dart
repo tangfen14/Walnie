@@ -47,7 +47,11 @@ class _VoiceRecordingSheetState extends State<VoiceRecordingSheet> {
   final SpeechToText _speechToText = SpeechToText();
   Timer? _timeoutTimer;
   Timer? _waveTimer;
-  final List<double> _volumeLevels = List.filled(_waveBarCount, _minWaveHeight);
+  final List<double> _volumeLevels = List<double>.filled(
+    _waveBarCount,
+    _minWaveHeight,
+    growable: true,
+  );
   double _targetWaveHeight = _minWaveHeight;
   double _currentWaveHeight = _minWaveHeight;
   double _minSoundLevel = double.infinity;
