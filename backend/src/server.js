@@ -43,6 +43,17 @@ function parseOptionalPositiveInt(value, fieldName) {
   return value;
 }
 
+function parseOptionalNonNegativeInt(value, fieldName) {
+  if (value == null || value === '') {
+    return null;
+  }
+
+  if (!Number.isInteger(value) || value < 0) {
+    throw makeHttpError(400, `${fieldName} must be a non-negative integer`);
+  }
+  return value;
+}
+
 function parseOptionalString(value, fieldName) {
   if (value == null || value === '') {
     return null;
@@ -102,7 +113,7 @@ function normalizeEventPayload(body) {
     throw makeHttpError(400, error.message);
   }
 
-  const durationMin = parseOptionalPositiveInt(body.durationMin, 'durationMin');
+  const durationMin = parseOptionalNonNegativeInt(body.durationMin, 'durationMin');
   const amountMl = parseOptionalPositiveInt(body.amountMl, 'amountMl');
   const note = parseOptionalString(body.note, 'note');
   const feedMethod = parseOptionalFeedMethod(body.feedMethod);

@@ -19,6 +19,18 @@ void main() {
     expect(event.validateForSave, returnsNormally);
   });
 
+  test('feed event allows duration 0 when amount is provided', () {
+    final event = BabyEvent(
+      type: EventType.feed,
+      occurredAt: DateTime.now(),
+      feedMethod: FeedMethod.bottleBreastmilk,
+      durationMin: 0,
+      amountMl: 80,
+    );
+
+    expect(event.validateForSave, returnsNormally);
+  });
+
   test('poop event can be saved without feed fields', () {
     final event = BabyEvent(type: EventType.poop, occurredAt: DateTime.now());
 

@@ -1,23 +1,28 @@
 {
   "version": "0.2.0",
   "configurations": [
+    // 云端接口（Debug）：连阿里云 API，适合日常联调与看日志。
     {
       "name": "Walnie (Cloud API)",
       "request": "launch",
       "type": "dart",
       "toolArgs": [
+        // 指定事件接口基地址为云端后端。
         "--dart-define=EVENT_API_BASE_URL=http://47.100.221.135:8080"
       ]
     },
+    // 云端接口（Release）：连阿里云 API，但以 release 模式运行，接近真机交付表现。
     {
       "name": "Walnie (Cloud API Release)",
       "request": "launch",
       "type": "dart",
       "flutterMode": "release",
       "toolArgs": [
+        // 指定事件接口基地址为云端后端。
         "--dart-define=EVENT_API_BASE_URL=http://47.100.221.135:8080"
       ]
     },
+    // 本地 SQLite（Debug）：不注入云端 API 地址，走本地存储逻辑，适合离线/本地模式验证。
     {
       "name": "Walnie (Local SQLite)",
       "request": "launch",

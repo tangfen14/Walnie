@@ -38,9 +38,9 @@ extension FeedMethodX on FeedMethod {
   String get labelZh {
     switch (this) {
       case FeedMethod.breastLeft:
-        return '亲喂母乳左侧';
+        return '亲喂（左侧）';
       case FeedMethod.breastRight:
-        return '亲喂母乳右侧';
+        return '亲喂（右侧）';
       case FeedMethod.bottleFormula:
         return '奶粉喂养';
       case FeedMethod.bottleBreastmilk:
@@ -150,8 +150,8 @@ class BabyEvent {
       }
     }
 
-    if (durationMin != null && durationMin! <= 0) {
-      throw const FormatException('时长必须大于 0');
+    if (durationMin != null && durationMin! < 0) {
+      throw const FormatException('时长不能小于 0');
     }
 
     if (amountMl != null && amountMl! <= 0) {
