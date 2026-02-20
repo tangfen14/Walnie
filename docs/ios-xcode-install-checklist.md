@@ -24,6 +24,15 @@
 - [ ] 左侧 Project Navigator 中选中 `Runner`（蓝色项目图标）
 - [ ] 中间区域切到 `TARGETS -> Runner`
 
+## 1.1 固定 Scheme 为 Release（一次性）
+
+仓库已将共享 Scheme 默认改为 `Run = Release`，首次打开 Xcode 后仍建议人工确认一次：
+
+- [ ] 顶部菜单点 `Product -> Scheme -> Edit Scheme...`
+- [ ] 左侧选择 `Run`
+- [ ] `Info` 页签里确认 `Build Configuration = Release`
+- [ ] 点击 `Close`
+
 ## 2. 配置签名（Signing）
 
 - [ ] 打开 `Signing & Capabilities`

@@ -633,8 +633,12 @@ class _HomeContent extends StatelessWidget {
               child: const Text('暂无记录，先新增一条吧。'),
             )
           else
-            ...state.timeline.map(
-              (event) => _TimelineCard(event, onTap: () => onEditEvent(event)),
+            ..._groupEventsByDay(state.timeline).asMap().entries.map(
+              (entry) => _TimelineDaySection(
+                group: entry.value,
+                showRelativeOnFirst: entry.key == 0,
+                onTapEvent: onEditEvent,
+              ),
             ),
         ],
       ),
@@ -642,63 +646,217 @@ class _HomeContent extends StatelessWidget {
   }
 }
 
-class _TimelineCard extends StatelessWidget {
-  const _TimelineCard(this.event, {this.onTap});
+class _TimelineDaySection extends StatelessWidget {
+  const _TimelineDaySection({
+    required this.group,
+    required this.onTapEvent,
+    required this.showRelativeOnFirst,
+  });
 
-  final BabyEvent event;
-  final VoidCallback? onTap;
+  final _TimelineDayGroup group;
+  final void Function(BabyEvent event) onTapEvent;
+  final bool showRelativeOnFirst;
 
   @override
   Widget build(BuildContext context) {
+    final headingStyle = Theme.of(
+      context,
+    ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700);
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(_dayLabel(group.dayStart), style: headingStyle),
+          const SizedBox(height: 8),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: const Color(0xFFE9ECEF)),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.03),
+                  blurRadius: 10,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            child: Column(
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      width: 6,
+                      height: 6,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFB857D9),
+                        borderRadius: BorderRadius.circular(99),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      _groupSummaryLabel(group.events),
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: Colors.black54,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                const Divider(height: 1, color: Color(0xFFEDEFF2)),
+                const SizedBox(height: 6),
+                ...group.events.asMap().entries.map((entry) {
+                  return _TimelineTrackItem(
+                    event: entry.value,
+                    isLast: entry.key == group.events.length - 1,
+                    showRelative: showRelativeOnFirst && entry.key == 0,
+                    onTap: () => onTapEvent(entry.value),
+                  );
+                }),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _TimelineTrackItem extends StatelessWidget {
+  const _TimelineTrackItem({
+    required this.event,
+    required this.isLast,
+    required this.showRelative,
+    required this.onTap,
+  });
+
+  final BabyEvent event;
+  final bool isLast;
+  final bool showRelative;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final accent = _accentColor(event.type);
+    final textMuted = Colors.black45;
+    final textStrong = Colors.black87;
+    final textNormal = Colors.black54;
+
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: onTap,
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 10),
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(14),
-        ),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Icon(_iconFor(event.type)),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Text(
-                        event.type.labelZh,
-                        style: Theme.of(context).textTheme.titleMedium,
-                      ),
-                      const Spacer(),
-                      Text(
-                        DateFormat('MM-dd HH:mm').format(event.occurredAt),
-                        style: Theme.of(
-                          context,
-                        ).textTheme.bodySmall?.copyWith(color: Colors.black54),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    _subtitleFor(event),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        child: IntrinsicHeight(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              SizedBox(
+                width: 48,
+                child: Padding(
+                  padding: const EdgeInsets.only(top: 2),
+                  child: Text(
+                    DateFormat('HH:mm').format(event.occurredAt),
                     style: Theme.of(
                       context,
-                    ).textTheme.bodyMedium?.copyWith(color: Colors.black87),
+                    ).textTheme.bodyLarge?.copyWith(color: textMuted),
                   ),
-                ],
+                ),
               ),
-            ),
-          ],
+              const SizedBox(width: 6),
+              SizedBox(
+                width: 16,
+                child: Column(
+                  children: [
+                    const SizedBox(height: 4),
+                    Container(
+                      width: 8,
+                      height: 8,
+                      decoration: BoxDecoration(
+                        color: accent,
+                        borderRadius: BorderRadius.circular(99),
+                      ),
+                    ),
+                    if (!isLast)
+                      Expanded(
+                        child: Container(
+                          width: 1,
+                          margin: const EdgeInsets.only(top: 6),
+                          color: const Color(0xFFE6EAF0),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(_iconFor(event.type), size: 17, color: accent),
+                        const SizedBox(width: 6),
+                        Text(
+                          event.type.labelZh,
+                          style: Theme.of(
+                            context,
+                          ).textTheme.titleMedium?.copyWith(color: textStrong),
+                        ),
+                        const Spacer(),
+                        Text(
+                          _primaryMetric(event),
+                          style: Theme.of(
+                            context,
+                          ).textTheme.titleMedium?.copyWith(color: textStrong),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      _subtitleFor(event),
+                      style: Theme.of(
+                        context,
+                      ).textTheme.bodyLarge?.copyWith(color: textNormal),
+                    ),
+                    if (showRelative) ...[
+                      const SizedBox(height: 6),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 2,
+                        ),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFFE7F3),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(
+                          _relativeText(event.occurredAt),
+                          style: Theme.of(context).textTheme.bodyMedium
+                              ?.copyWith(color: const Color(0xFFB43A71)),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
+}
+
+class _TimelineDayGroup {
+  _TimelineDayGroup({required this.dayStart, required this.events});
+
+  final DateTime dayStart;
+  final List<BabyEvent> events;
 }
 
 IconData _iconFor(EventType type) {
@@ -714,6 +872,104 @@ IconData _iconFor(EventType type) {
     case EventType.pump:
       return Icons.science;
   }
+}
+
+Color _accentColor(EventType type) {
+  switch (type) {
+    case EventType.feed:
+      return const Color(0xFF8E44AD);
+    case EventType.poop:
+      return const Color(0xFFE67E22);
+    case EventType.pee:
+      return const Color(0xFF3498DB);
+    case EventType.diaper:
+      return const Color(0xFFF1C40F);
+    case EventType.pump:
+      return const Color(0xFFB857D9);
+  }
+}
+
+List<_TimelineDayGroup> _groupEventsByDay(List<BabyEvent> events) {
+  final groups = <_TimelineDayGroup>[];
+  for (final event in events) {
+    final day = DateTime(
+      event.occurredAt.year,
+      event.occurredAt.month,
+      event.occurredAt.day,
+    );
+    if (groups.isEmpty || !_isSameDay(groups.last.dayStart, day)) {
+      groups.add(_TimelineDayGroup(dayStart: day, events: [event]));
+      continue;
+    }
+    groups.last.events.add(event);
+  }
+  return groups;
+}
+
+bool _isSameDay(DateTime left, DateTime right) {
+  return left.year == right.year &&
+      left.month == right.month &&
+      left.day == right.day;
+}
+
+String _dayLabel(DateTime day) {
+  final now = DateTime.now();
+  final today = DateTime(now.year, now.month, now.day);
+  final yesterday = today.subtract(const Duration(days: 1));
+  if (_isSameDay(day, today)) {
+    return '今天';
+  }
+  if (_isSameDay(day, yesterday)) {
+    return '昨天';
+  }
+  return DateFormat('M月d日').format(day);
+}
+
+String _groupSummaryLabel(List<BabyEvent> events) {
+  final count = events.length;
+  if (count == 0) {
+    return '无记录';
+  }
+  final firstType = events.first.type;
+  final allSameType = events.every((item) => item.type == firstType);
+  if (allSameType) {
+    return '${firstType.labelZh} $count 次';
+  }
+  return '全部记录 $count 条';
+}
+
+String _primaryMetric(BabyEvent event) {
+  if (event.amountMl != null) {
+    return '${event.amountMl}ml';
+  }
+  if (event.durationMin != null) {
+    return '${event.durationMin}分钟';
+  }
+  return '--';
+}
+
+String _relativeText(DateTime time) {
+  final now = DateTime.now();
+  var diff = now.difference(time);
+  if (diff.isNegative) {
+    diff = Duration.zero;
+  }
+
+  if (diff.inMinutes < 1) {
+    return '刚刚';
+  }
+  if (diff.inHours < 1) {
+    return '${diff.inMinutes}分钟前';
+  }
+  if (diff.inDays < 1) {
+    final hours = diff.inHours;
+    final minutes = diff.inMinutes % 60;
+    if (minutes == 0) {
+      return '$hours小时前';
+    }
+    return '$hours小时$minutes分钟前';
+  }
+  return '${diff.inDays}天前';
 }
 
 String _subtitleFor(BabyEvent event) {

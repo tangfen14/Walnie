@@ -104,6 +104,9 @@ VSCode 调试配置：
 - `Walnie (Cloud API)`：云端调试模式
 - `Walnie (Cloud API Release)`：云端 release 模式
 
+Xcode：
+- 共享 `Runner` Scheme 已默认设置为 `Run = Release`，避免真机冷启动闪退
+
 ## 6. LLM 兜底配置
 
 默认参数在：
