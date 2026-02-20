@@ -359,8 +359,10 @@ class _EventEditorSheetState extends State<EventEditorSheet> {
       final isFeed = _eventType == EventType.feed;
       final isPump = _eventType == EventType.pump;
       final trimmedNote = _noteController.text.trim();
+      final durationText = _durationController.text.trim();
+      final clearFeedDuration = isFeed && durationText.isEmpty;
       final amountMl = int.tryParse(_amountController.text.trim());
-      final durationMin = int.tryParse(_durationController.text.trim());
+      final durationMin = int.tryParse(durationText);
       final occurredAt = isPump ? (_pumpStartAt ?? _occurredAt) : _occurredAt;
 
       final event = widget.initialEvent != null
@@ -374,7 +376,7 @@ class _EventEditorSheetState extends State<EventEditorSheet> {
               pumpEndAt: isPump ? _pumpEndAt : null,
               note: trimmedNote.isEmpty ? null : trimmedNote,
               clearFeedMethod: !isFeed,
-              clearDuration: !isFeed,
+              clearDuration: !isFeed || clearFeedDuration,
               clearAmount: !(isFeed || isPump),
               clearPumpStartAt: !isPump,
               clearPumpEndAt: !isPump,
