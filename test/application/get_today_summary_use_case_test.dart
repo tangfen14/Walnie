@@ -81,4 +81,40 @@ void main() {
     expect(summary.poopCount, 1);
     expect(summary.latestFeedAt, isNotNull);
   });
+
+  test('counts events by local day boundary', () async {
+    final fixedNow = DateTime(2026, 2, 21, 12, 0);
+    final repo = _MemoryEventRepository([
+      BabyEvent(
+        type: EventType.feed,
+        occurredAt: DateTime(2026, 2, 20, 23, 59),
+        feedMethod: FeedMethod.bottleFormula,
+        amountMl: 50,
+      ),
+      BabyEvent(
+        type: EventType.feed,
+        occurredAt: DateTime(2026, 2, 21, 0, 0),
+        feedMethod: FeedMethod.bottleFormula,
+        amountMl: 60,
+      ),
+      BabyEvent(
+        type: EventType.feed,
+        occurredAt: DateTime(2026, 2, 21, 11, 59),
+        feedMethod: FeedMethod.bottleBreastmilk,
+        amountMl: 70,
+      ),
+      BabyEvent(
+        type: EventType.feed,
+        occurredAt: DateTime(2026, 2, 22, 0, 0),
+        feedMethod: FeedMethod.bottleBreastmilk,
+        amountMl: 80,
+      ),
+    ]);
+
+    final useCase = GetTodaySummaryUseCase(repo, nowProvider: () => fixedNow);
+    final summary = await useCase();
+
+    expect(summary.feedCount, 2);
+    expect(summary.latestFeedAt, DateTime(2026, 2, 21, 11, 59));
+  });
 }

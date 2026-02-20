@@ -14,7 +14,7 @@ extension EventTypeX on EventType {
   String get labelZh {
     switch (this) {
       case EventType.feed:
-        return '吃奶';
+        return '喂奶';
       case EventType.poop:
         return '便便';
       case EventType.pee:
@@ -129,12 +129,12 @@ class BabyEvent {
   void validateForSave() {
     if (type == EventType.feed) {
       if (feedMethod == null) {
-        throw const FormatException('吃奶记录需要选择喂养方式');
+        throw const FormatException('喂奶记录需要选择喂养方式');
       }
       final hasDuration = (durationMin ?? 0) > 0;
       final hasAmount = (amountMl ?? 0) > 0;
       if (!hasDuration && !hasAmount) {
-        throw const FormatException('吃奶记录需要填写时长或毫升数');
+        throw const FormatException('喂奶记录需要填写时长或毫升数');
       }
     }
 

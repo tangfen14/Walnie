@@ -3,12 +3,16 @@ import 'package:baby_tracker/domain/entities/today_summary.dart';
 import 'package:baby_tracker/domain/repositories/event_repository.dart';
 
 class GetTodaySummaryUseCase {
-  GetTodaySummaryUseCase(this._eventRepository);
+  GetTodaySummaryUseCase(
+    this._eventRepository, {
+    DateTime Function()? nowProvider,
+  }) : _nowProvider = nowProvider ?? DateTime.now;
 
   final EventRepository _eventRepository;
+  final DateTime Function() _nowProvider;
 
   Future<TodaySummary> call() async {
-    final now = DateTime.now();
+    final now = _nowProvider();
     final dayStart = DateTime(now.year, now.month, now.day);
     final dayEnd = dayStart.add(const Duration(days: 1));
 

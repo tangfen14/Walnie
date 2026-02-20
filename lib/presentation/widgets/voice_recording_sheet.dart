@@ -75,10 +75,12 @@ class _VoiceRecordingSheetState extends State<VoiceRecordingSheet> {
       });
       return;
     }
+    if (!mounted) return;
     await _startRecording();
   }
 
   Future<void> _startRecording() async {
+    if (!mounted) return;
     if (_isRecording) return;
 
     setState(() {
@@ -113,6 +115,7 @@ class _VoiceRecordingSheetState extends State<VoiceRecordingSheet> {
       },
     );
 
+    if (!mounted || !_isRecording) return;
     _startWaveTicker();
   }
 
@@ -233,6 +236,8 @@ class _VoiceRecordingSheetState extends State<VoiceRecordingSheet> {
   }
 
   void _finish(VoiceRecordingAction action) {
+    unawaited(_stopRecording());
+    if (!mounted) return;
     Navigator.of(
       context,
     ).pop(VoiceRecordingResult(action: action, transcript: _transcript));

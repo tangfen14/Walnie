@@ -34,7 +34,7 @@ class ReminderServiceImpl implements ReminderService {
       return null;
     }
 
-    return DateTime.tryParse(raw)?.toLocal();
+    return _parseIsoWallClock(raw);
   }
 
   @override
@@ -53,7 +53,8 @@ class ReminderServiceImpl implements ReminderService {
     }
 
     final policy = await currentPolicy();
-    final triggerAt = latestFeed.occurredAt.add(
+    final latestFeedWallClock = _toWallClock(latestFeed.occurredAt);
+    final triggerAt = latestFeedWallClock.add(
       Duration(hours: policy.intervalHours),
     );
 
@@ -64,5 +65,55 @@ class ReminderServiceImpl implements ReminderService {
       _nextTriggerIsoKey,
       scheduledAt.toIso8601String(),
     );
+  }
+
+  DateTime _toWallClock(DateTime value) {
+    return DateTime(
+      value.year,
+      value.month,
+      value.day,
+      value.hour,
+      value.minute,
+      value.second,
+      value.millisecond,
+      value.microsecond,
+    );
+  }
+
+  DateTime? _parseIsoWallClock(String raw) {
+    final normalized = raw.trim();
+    final match = RegExp(
+      r'^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})(?::(\d{2})(?:\.(\d{1,6}))?)?',
+    ).firstMatch(normalized);
+
+    if (match != null) {
+      final year = int.parse(match.group(1)!);
+      final month = int.parse(match.group(2)!);
+      final day = int.parse(match.group(3)!);
+      final hour = int.parse(match.group(4)!);
+      final minute = int.parse(match.group(5)!);
+      final second = match.group(6) == null ? 0 : int.parse(match.group(6)!);
+      final fraction = match.group(7);
+      final microTotal = fraction == null
+          ? 0
+          : int.parse(fraction.padRight(6, '0').substring(0, 6));
+
+      return DateTime(
+        year,
+        month,
+        day,
+        hour,
+        minute,
+        second,
+        microTotal ~/ 1000,
+        microTotal % 1000,
+      );
+    }
+
+    final parsed = DateTime.tryParse(normalized);
+    if (parsed == null) {
+      return null;
+    }
+    return _toWallClock(parsed);
   }
 }

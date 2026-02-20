@@ -205,9 +205,9 @@ class LlmFallbackParser {
 }
 
 意图类型说明：
- - create_event: 记录婴儿事件（吃奶、便便、尿尿、换尿布、吸奶）
+ - create_event: 记录婴儿事件（喂奶、便便、尿尿、换尿布、吸奶）
 - set_reminder: 设置喂奶提醒间隔
-- query_summary: 查询今日汇总、最近一次喂奶、下次提醒时间等
+- query_summary: 查询今日汇总、最近一次喂奶、下次喂奶提醒时间等
 - unknown: 无法识别的意图
 
 confidence 是识别置信度，0.0-1.0 之间，越接近 1.0 表示越确定。

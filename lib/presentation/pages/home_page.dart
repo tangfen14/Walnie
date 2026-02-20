@@ -7,6 +7,8 @@ import 'package:baby_tracker/presentation/controllers/home_controller.dart';
 import 'package:baby_tracker/presentation/controllers/home_state.dart';
 import 'package:baby_tracker/presentation/theme/walnie_theme_extensions.dart';
 import 'package:baby_tracker/presentation/theme/walnie_tokens.dart';
+import 'package:baby_tracker/presentation/utils/relative_time_formatter.dart';
+import 'package:baby_tracker/presentation/utils/timeline_day_utils.dart';
 import 'package:baby_tracker/presentation/utils/voice_payload_mapper.dart';
 import 'package:baby_tracker/presentation/widgets/event_editor_sheet.dart';
 import 'package:baby_tracker/presentation/widgets/summary_card.dart';
@@ -14,12 +16,20 @@ import 'package:baby_tracker/presentation/widgets/voice_recording_sheet.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+import 'package:table_calendar/table_calendar.dart';
 
-class HomePage extends ConsumerWidget {
+class HomePage extends ConsumerStatefulWidget {
   const HomePage({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<HomePage> createState() => _HomePageState();
+}
+
+class _HomePageState extends ConsumerState<HomePage> {
+  final GlobalKey<_HomeContentState> _homeContentKey = GlobalKey();
+
+  @override
+  Widget build(BuildContext context) {
     final homeStateAsync = ref.watch(homeControllerProvider);
     final parserUseCase = ref.read(parseVoiceCommandUseCaseProvider);
 
@@ -27,6 +37,12 @@ class HomePage extends ConsumerWidget {
       appBar: AppBar(
         title: const Text('Walnie'),
         actions: [
+          IconButton(
+            onPressed: () =>
+                _homeContentKey.currentState?.openTimelineCalendar(),
+            icon: const Icon(Icons.calendar_month_outlined),
+            tooltip: '按日期跳转时间线',
+          ),
           IconButton(
             onPressed: () => _showIntervalSelector(context, ref),
             icon: const Icon(Icons.alarm),
@@ -36,6 +52,7 @@ class HomePage extends ConsumerWidget {
       ),
       body: homeStateAsync.when(
         data: (state) => _HomeContent(
+          key: _homeContentKey,
           state: state,
           onAddEvent: (type) =>
               _openEventEditor(context, ref, initialType: type),
@@ -150,9 +167,13 @@ class HomePage extends ConsumerWidget {
     required EventType initialType,
     BabyEvent? initialEvent,
   }) async {
+    final maxHeight = MediaQuery.sizeOf(context).height * 0.9;
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
+      useSafeArea: true,
+      showDragHandle: false,
+      constraints: BoxConstraints(maxHeight: maxHeight),
       builder: (context) {
         return EventEditorSheet(
           initialType: initialType,
@@ -286,7 +307,7 @@ class HomePage extends ConsumerWidget {
             title: const Text('输入指令'),
             content: TextField(
               controller: controller,
-              decoration: const InputDecoration(hintText: '例如：记录吃奶 20分钟'),
+              decoration: const InputDecoration(hintText: '例如：记录喂奶 20分钟'),
               autofocus: true,
             ),
             actions: [
@@ -427,10 +448,14 @@ class HomePage extends ConsumerWidget {
     VoiceIntent intent,
   ) async {
     final initialEvent = eventFromVoiceIntent(intent);
+    final maxHeight = MediaQuery.sizeOf(context).height * 0.9;
 
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
+      useSafeArea: true,
+      showDragHandle: false,
+      constraints: BoxConstraints(maxHeight: maxHeight),
       builder: (context) {
         return EventEditorSheet(
           initialType: initialEvent.type,
@@ -527,6 +552,8 @@ class _VoiceActionBar extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
+    final voicePrimary = colorScheme.tertiaryContainer;
+    final voiceForeground = colorScheme.onTertiaryContainer;
 
     return Container(
       padding: const EdgeInsets.all(WalnieTokens.spacingSm),
@@ -546,6 +573,10 @@ class _VoiceActionBar extends StatelessWidget {
                 onPressed: onVoiceTap,
                 icon: const Icon(Icons.mic_rounded),
                 label: const Text('语音录入'),
+                style: FilledButton.styleFrom(
+                  backgroundColor: voicePrimary,
+                  foregroundColor: voiceForeground,
+                ),
               ),
             ),
           ),
@@ -568,8 +599,9 @@ class _VoiceActionBar extends StatelessWidget {
   }
 }
 
-class _HomeContent extends StatelessWidget {
+class _HomeContent extends StatefulWidget {
   const _HomeContent({
+    super.key,
     required this.state,
     required this.onAddEvent,
     required this.onEditEvent,
@@ -586,13 +618,34 @@ class _HomeContent extends StatelessWidget {
   final VoidCallback onOpenReminderSettings;
 
   @override
+  State<_HomeContent> createState() => _HomeContentState();
+}
+
+class _HomeContentState extends State<_HomeContent> {
+  final Map<DateTime, GlobalKey> _daySectionKeys = {};
+  DateTime? _selectedCalendarDay;
+
+  @override
+  void initState() {
+    super.initState();
+    _syncTimelineMeta(widget.state.timeline);
+  }
+
+  @override
+  void didUpdateWidget(covariant _HomeContent oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _syncTimelineMeta(widget.state.timeline);
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final summaryItems = _summaryItems(state);
+    final summaryItems = _summaryItems(widget.state);
+    final dayGroups = _groupEventsByDay(widget.state.timeline);
     final firstRowItems = summaryItems.take(3).toList(growable: false);
     final secondRowItems = summaryItems.skip(3).toList(growable: false);
 
     return RefreshIndicator(
-      onRefresh: onRefresh,
+      onRefresh: widget.onRefresh,
       child: ListView(
         physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.fromLTRB(
@@ -603,34 +656,34 @@ class _HomeContent extends StatelessWidget {
         ),
         children: [
           _BrandHeader(
-            state: state,
-            onOpenReminderSettings: onOpenReminderSettings,
+            state: widget.state,
+            onOpenReminderSettings: widget.onOpenReminderSettings,
           ),
           const SizedBox(height: WalnieTokens.spacingLg),
           _SectionHeader(
             title: '今日概览',
-            subtitle: state.filterType == null
+            subtitle: widget.state.filterType == null
                 ? '点击卡片可筛选时间线'
-                : '当前筛选：${state.filterType!.labelZh}',
+                : '当前筛选：${widget.state.filterType!.labelZh}',
           ),
           const SizedBox(height: WalnieTokens.spacingSm),
           _SummaryOverviewRows(
             firstRowItems: firstRowItems,
             secondRowItems: secondRowItems,
-            selectedType: state.filterType,
-            onSelectFilter: onSelectFilter,
+            selectedType: widget.state.filterType,
+            onSelectFilter: widget.onSelectFilter,
           ),
           const SizedBox(height: WalnieTokens.spacingLg),
-          const _SectionHeader(title: '快速记录', subtitle: '主操作优先展示，减少录入路径'),
+          const _SectionHeader(title: '快速记录'),
           const SizedBox(height: WalnieTokens.spacingSm),
-          _QuickActions(onAddEvent: onAddEvent),
+          _QuickActions(onAddEvent: widget.onAddEvent),
           const SizedBox(height: WalnieTokens.spacingXl),
           _SectionHeader(
-            title: _timelineTitle(state.filterType),
+            title: _timelineTitle(widget.state.filterType),
             subtitle: '按天分组，点击可编辑',
           ),
           const SizedBox(height: WalnieTokens.spacingSm),
-          if (state.timeline.isEmpty)
+          if (widget.state.timeline.isEmpty)
             Card(
               child: Padding(
                 padding: const EdgeInsets.all(WalnieTokens.spacingXl),
@@ -641,17 +694,241 @@ class _HomeContent extends StatelessWidget {
               ),
             )
           else
-            ..._groupEventsByDay(state.timeline).asMap().entries.map(
-              (entry) => _TimelineDaySection(
-                group: entry.value,
-                showRelativeOnFirst: entry.key == 0,
-                onTapEvent: onEditEvent,
-              ),
+            Column(
+              children: dayGroups
+                  .asMap()
+                  .entries
+                  .map((entry) {
+                    final day = entry.value.dayStart;
+                    return _TimelineDaySection(
+                      sectionKey: _sectionKeyForDay(day),
+                      group: entry.value,
+                      showRelativeOnFirst: entry.key == 0,
+                      onTapEvent: widget.onEditEvent,
+                    );
+                  })
+                  .toList(growable: false),
             ),
         ],
       ),
     );
   }
+
+  void _syncTimelineMeta(List<BabyEvent> timeline) {
+    final groups = _groupEventsByDay(timeline);
+    final days = groups.map((group) => group.dayStart).toSet();
+    _daySectionKeys.removeWhere((day, _) => !days.contains(day));
+
+    if (days.isEmpty) {
+      _selectedCalendarDay = null;
+      return;
+    }
+
+    if (_selectedCalendarDay == null || !days.contains(_selectedCalendarDay)) {
+      _selectedCalendarDay = groups.first.dayStart;
+    }
+  }
+
+  GlobalKey _sectionKeyForDay(DateTime day) {
+    return _daySectionKeys.putIfAbsent(day, GlobalKey.new);
+  }
+
+  Future<void> openTimelineCalendar() async {
+    await _openTimelineCalendar(_groupEventsByDay(widget.state.timeline));
+  }
+
+  Future<void> _openTimelineCalendar(List<_TimelineDayGroup> groups) async {
+    if (groups.isEmpty) {
+      return;
+    }
+
+    final daysWithEvents = collectEventDayStarts(widget.state.timeline);
+    final selectedDay = _selectedCalendarDay ?? groups.first.dayStart;
+
+    final pickedDay = await _showTimelineCalendarDialog(
+      context,
+      selectedDay: selectedDay,
+      daysWithEvents: daysWithEvents,
+    );
+    if (pickedDay == null || !mounted) {
+      return;
+    }
+
+    setState(() {
+      _selectedCalendarDay = pickedDay;
+    });
+
+    await WidgetsBinding.instance.endOfFrame;
+
+    final dayKey = _daySectionKeys[pickedDay];
+    final targetContext = dayKey?.currentContext;
+    if (targetContext == null || !targetContext.mounted) {
+      return;
+    }
+    await Scrollable.ensureVisible(
+      targetContext,
+      duration: const Duration(milliseconds: 280),
+      curve: Curves.easeOutCubic,
+      alignment: 0.03,
+    );
+  }
+}
+
+Future<DateTime?> _showTimelineCalendarDialog(
+  BuildContext context, {
+  required DateTime selectedDay,
+  required Set<DateTime> daysWithEvents,
+}) {
+  if (daysWithEvents.isEmpty) {
+    return Future.value(null);
+  }
+
+  final sortedDays = daysWithEvents.toList(growable: false)
+    ..sort((left, right) => left.compareTo(right));
+  final firstDay = sortedDays.first;
+  final lastDay = sortedDays.last;
+  final markerColor = _accentColor(context, EventType.feed);
+  var focusedDay = selectedDay;
+  const rowHeight = 40.0;
+  const daysOfWeekHeight = 24.0;
+  const headerHeight = 52.0;
+  const dialogContentPadding = WalnieTokens.spacingMd * 2;
+  const extraCalendarSpacing = 16.0;
+
+  return showDialog<DateTime>(
+    context: context,
+    builder: (context) {
+      final textTheme = Theme.of(context).textTheme;
+      final colorScheme = Theme.of(context).colorScheme;
+      return StatefulBuilder(
+        builder: (context, setDialogState) {
+          final rowCount = _calendarRowCountForMonth(focusedDay);
+          final dialogHeight =
+              headerHeight +
+              daysOfWeekHeight +
+              rowCount * rowHeight +
+              dialogContentPadding +
+              extraCalendarSpacing;
+
+          return Dialog(
+            insetPadding: const EdgeInsets.symmetric(
+              horizontal: 28,
+              vertical: 24,
+            ),
+            child: SizedBox(
+              width: 320,
+              height: dialogHeight,
+              child: Padding(
+                padding: const EdgeInsets.all(WalnieTokens.spacingMd),
+                child: TableCalendar<int>(
+                  locale: 'zh_CN',
+                  firstDay: firstDay,
+                  lastDay: lastDay,
+                  focusedDay: focusedDay,
+                  calendarFormat: CalendarFormat.month,
+                  availableCalendarFormats: const {
+                    CalendarFormat.month: 'Month',
+                  },
+                  shouldFillViewport: false,
+                  rowHeight: rowHeight,
+                  daysOfWeekHeight: daysOfWeekHeight,
+                  headerStyle: HeaderStyle(
+                    formatButtonVisible: false,
+                    titleCentered: true,
+                    titleTextStyle: textTheme.titleMedium ?? const TextStyle(),
+                    leftChevronIcon: Icon(
+                      Icons.chevron_left,
+                      color: colorScheme.onSurface,
+                    ),
+                    rightChevronIcon: Icon(
+                      Icons.chevron_right,
+                      color: colorScheme.onSurface,
+                    ),
+                  ),
+                  calendarStyle: CalendarStyle(
+                    outsideDaysVisible: false,
+                    markersAutoAligned: false,
+                    markersAlignment: Alignment.bottomCenter,
+                    markersOffset: const PositionedOffset(bottom: -2),
+                    canMarkersOverflow: true,
+                    todayTextStyle:
+                        textTheme.bodyMedium?.copyWith(
+                          color: colorScheme.onSurface,
+                          fontWeight: FontWeight.w700,
+                        ) ??
+                        TextStyle(
+                          color: colorScheme.onSurface,
+                          fontWeight: FontWeight.w700,
+                        ),
+                    selectedDecoration: BoxDecoration(
+                      color: colorScheme.surface,
+                      borderRadius: BorderRadius.circular(
+                        WalnieTokens.radiusSm,
+                      ),
+                      border: Border.all(color: markerColor, width: 2),
+                    ),
+                    selectedTextStyle:
+                        textTheme.bodyMedium?.copyWith(
+                          color: colorScheme.onSurface,
+                          fontWeight: FontWeight.w700,
+                        ) ??
+                        const TextStyle(fontWeight: FontWeight.w700),
+                    todayDecoration: BoxDecoration(
+                      color: colorScheme.surface,
+                      borderRadius: BorderRadius.circular(
+                        WalnieTokens.radiusSm,
+                      ),
+                      border: Border.all(
+                        color: markerColor.withValues(alpha: 0.42),
+                        width: 1.2,
+                      ),
+                    ),
+                    markerDecoration: BoxDecoration(
+                      color: markerColor,
+                      borderRadius: BorderRadius.circular(99),
+                    ),
+                    markersMaxCount: 1,
+                    markerSize: 6,
+                  ),
+                  selectedDayPredicate: (day) => _isSameDay(day, selectedDay),
+                  eventLoader: (day) {
+                    return daysWithEvents.contains(
+                          DateTime(day.year, day.month, day.day),
+                        )
+                        ? const [1]
+                        : const [];
+                  },
+                  enabledDayPredicate: (day) {
+                    final dayStart = DateTime(day.year, day.month, day.day);
+                    return daysWithEvents.contains(dayStart);
+                  },
+                  onDaySelected: (picked, focused) {
+                    focusedDay = focused;
+                    Navigator.of(
+                      context,
+                    ).pop(DateTime(picked.year, picked.month, picked.day));
+                  },
+                  onPageChanged: (focused) {
+                    setDialogState(() {
+                      focusedDay = focused;
+                    });
+                  },
+                ),
+              ),
+            ),
+          );
+        },
+      );
+    },
+  );
+}
+
+int _calendarRowCountForMonth(DateTime day) {
+  final firstOfMonth = DateTime(day.year, day.month, 1);
+  final daysInMonth = DateUtils.getDaysInMonth(day.year, day.month);
+  final leadingDays = firstOfMonth.weekday % DateTime.daysPerWeek;
+  final totalCells = leadingDays + daysInMonth;
+  return (totalCells / DateTime.daysPerWeek).ceil();
 }
 
 class _SummaryOverviewRows extends StatelessWidget {
@@ -726,10 +1003,10 @@ class _SummaryOverviewRow extends StatelessWidget {
 }
 
 class _SectionHeader extends StatelessWidget {
-  const _SectionHeader({required this.title, required this.subtitle});
+  const _SectionHeader({required this.title, this.subtitle});
 
   final String title;
-  final String subtitle;
+  final String? subtitle;
 
   @override
   Widget build(BuildContext context) {
@@ -738,8 +1015,10 @@ class _SectionHeader extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(title, style: textTheme.titleLarge),
-        const SizedBox(height: WalnieTokens.spacingXs),
-        Text(subtitle, style: textTheme.bodyMedium),
+        if (subtitle != null) ...[
+          const SizedBox(height: WalnieTokens.spacingXs),
+          Text(subtitle!, style: textTheme.bodyMedium),
+        ],
       ],
     );
   }
@@ -797,8 +1076,8 @@ class _BrandHeader extends StatelessWidget {
                 Expanded(
                   child: Text(
                     state.nextReminderAt == null
-                        ? '下次提醒：暂无（先记录一条喂奶）'
-                        : '下次提醒：${DateFormat('MM-dd HH:mm').format(state.nextReminderAt!)}',
+                        ? '下次喂奶提醒：暂无（先记录一条喂奶）'
+                        : '下次喂奶提醒：${DateFormat('MM-dd HH:mm').format(state.nextReminderAt!)}',
                     style: theme.textTheme.bodyMedium,
                   ),
                 ),
@@ -830,7 +1109,7 @@ class _QuickActions extends StatelessWidget {
               child: FilledButton.icon(
                 onPressed: () => onAddEvent(EventType.feed),
                 icon: const Icon(Icons.local_drink),
-                label: const Text('记录吃奶'),
+                label: const Text('记录喂奶'),
               ),
             ),
             const SizedBox(width: WalnieTokens.spacingSm),
@@ -894,7 +1173,7 @@ List<_SummaryItem> _summaryItems(HomeState state) {
   return [
     _SummaryItem(
       type: EventType.feed,
-      title: '吃奶',
+      title: '喂奶',
       value: '${state.todaySummary.feedCount}',
       icon: Icons.local_drink,
     ),
@@ -927,11 +1206,13 @@ List<_SummaryItem> _summaryItems(HomeState state) {
 
 class _TimelineDaySection extends StatelessWidget {
   const _TimelineDaySection({
+    required this.sectionKey,
     required this.group,
     required this.onTapEvent,
     required this.showRelativeOnFirst,
   });
 
+  final GlobalKey sectionKey;
   final _TimelineDayGroup group;
   final void Function(BabyEvent event) onTapEvent;
   final bool showRelativeOnFirst;
@@ -942,6 +1223,7 @@ class _TimelineDaySection extends StatelessWidget {
     final timeline = theme.timelineColors;
 
     return Padding(
+      key: sectionKey,
       padding: const EdgeInsets.only(bottom: WalnieTokens.spacingMd),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -965,7 +1247,7 @@ class _TimelineDaySection extends StatelessWidget {
                       ),
                       const SizedBox(width: WalnieTokens.spacingSm),
                       Text(
-                        _groupSummaryLabel(group.events),
+                        formatTimelineGroupSummary(group.events),
                         style: theme.textTheme.bodyMedium?.copyWith(
                           fontWeight: FontWeight.w600,
                         ),
@@ -1100,7 +1382,7 @@ class _TimelineTrackItem extends StatelessWidget {
                             ),
                           ),
                           child: Text(
-                            _relativeText(event.occurredAt),
+                            formatRelativeTime(event.occurredAt),
                             style: theme.textTheme.bodySmall?.copyWith(
                               color: timeline.relativeChipForeground,
                               fontWeight: FontWeight.w600,
@@ -1194,19 +1476,6 @@ String _dayLabel(DateTime day) {
   return DateFormat('M月d日').format(day);
 }
 
-String _groupSummaryLabel(List<BabyEvent> events) {
-  final count = events.length;
-  if (count == 0) {
-    return '无记录';
-  }
-  final firstType = events.first.type;
-  final allSameType = events.every((item) => item.type == firstType);
-  if (allSameType) {
-    return '${firstType.labelZh} $count 次';
-  }
-  return '全部记录 $count 条';
-}
-
 String _primaryMetric(BabyEvent event) {
   if (event.amountMl != null) {
     return '${event.amountMl}ml';
@@ -1215,30 +1484,6 @@ String _primaryMetric(BabyEvent event) {
     return '${event.durationMin}分钟';
   }
   return '--';
-}
-
-String _relativeText(DateTime time) {
-  final now = DateTime.now();
-  var diff = now.difference(time);
-  if (diff.isNegative) {
-    diff = Duration.zero;
-  }
-
-  if (diff.inMinutes < 1) {
-    return '刚刚';
-  }
-  if (diff.inHours < 1) {
-    return '${diff.inMinutes}分钟前';
-  }
-  if (diff.inDays < 1) {
-    final hours = diff.inHours;
-    final minutes = diff.inMinutes % 60;
-    if (minutes == 0) {
-      return '$hours小时前';
-    }
-    return '$hours小时$minutes分钟前';
-  }
-  return '${diff.inDays}天前';
 }
 
 String _subtitleFor(BabyEvent event) {

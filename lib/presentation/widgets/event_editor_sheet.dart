@@ -74,11 +74,12 @@ class _EventEditorSheetState extends State<EventEditorSheet> {
     final colorScheme = Theme.of(context).colorScheme;
 
     return SafeArea(
+      top: false,
       child: Padding(
         padding: EdgeInsets.only(
           left: WalnieTokens.spacingLg,
           right: WalnieTokens.spacingLg,
-          top: WalnieTokens.spacingMd,
+          top: WalnieTokens.spacingXs,
           bottom:
               MediaQuery.of(context).viewInsets.bottom + WalnieTokens.spacingXl,
         ),
@@ -87,6 +88,26 @@ class _EventEditorSheetState extends State<EventEditorSheet> {
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      widget.initialEvent == null ? '新建记录' : '编辑记录',
+                      style: textTheme.headlineSmall,
+                    ),
+                  ),
+                  Semantics(
+                    button: true,
+                    label: '关闭编辑页面',
+                    child: IconButton(
+                      tooltip: '关闭',
+                      onPressed: () => Navigator.of(context).maybePop(),
+                      icon: const Icon(Icons.close_rounded),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: WalnieTokens.spacingXs),
               if (widget.headerText != null) ...[
                 _SectionCard(
                   child: Row(
@@ -105,11 +126,6 @@ class _EventEditorSheetState extends State<EventEditorSheet> {
                 ),
                 const SizedBox(height: WalnieTokens.spacingSm),
               ],
-              Text(
-                widget.initialEvent == null ? '新建记录' : '编辑记录',
-                style: textTheme.headlineSmall,
-              ),
-              const SizedBox(height: WalnieTokens.spacingXs),
               Text('按区块填写，减少漏填', style: textTheme.bodyMedium),
               const SizedBox(height: WalnieTokens.spacingMd),
               _SectionCard(
