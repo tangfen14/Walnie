@@ -1,4 +1,5 @@
 import 'package:baby_tracker/domain/entities/baby_event.dart';
+import 'package:baby_tracker/presentation/theme/walnie_tokens.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
@@ -69,13 +70,17 @@ class _EventEditorSheetState extends State<EventEditorSheet> {
 
   @override
   Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+    final colorScheme = Theme.of(context).colorScheme;
+
     return SafeArea(
       child: Padding(
         padding: EdgeInsets.only(
-          left: 16,
-          right: 16,
-          top: 14,
-          bottom: MediaQuery.of(context).viewInsets.bottom + 18,
+          left: WalnieTokens.spacingLg,
+          right: WalnieTokens.spacingLg,
+          top: WalnieTokens.spacingMd,
+          bottom:
+              MediaQuery.of(context).viewInsets.bottom + WalnieTokens.spacingXl,
         ),
         child: SingleChildScrollView(
           child: Column(
@@ -83,198 +88,248 @@ class _EventEditorSheetState extends State<EventEditorSheet> {
             mainAxisSize: MainAxisSize.min,
             children: [
               if (widget.headerText != null) ...[
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFEFF8F5),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Text(
-                    '识别内容：${widget.headerText}',
-                    style: Theme.of(context).textTheme.bodyMedium,
+                _SectionCard(
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Icon(Icons.record_voice_over, color: colorScheme.primary),
+                      const SizedBox(width: WalnieTokens.spacingSm),
+                      Expanded(
+                        child: Text(
+                          '识别内容：${widget.headerText}',
+                          style: textTheme.bodyMedium,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: WalnieTokens.spacingSm),
               ],
-              Text('记录事件', style: Theme.of(context).textTheme.titleLarge),
-              const SizedBox(height: 12),
-              SegmentedButton<EventType>(
-                showSelectedIcon: false,
-                segments: EventType.values
-                    .map(
-                      (type) => ButtonSegment<EventType>(
-                        value: type,
-                        label: Text(type.labelZh),
-                      ),
-                    )
-                    .toList(growable: false),
-                selected: {_eventType},
-                onSelectionChanged: (set) {
-                  setState(() {
-                    _eventType = set.first;
-                    if (_eventType == EventType.feed) {
-                      _feedMethod ??= FeedMethod.bottleBreastmilk;
-                      _pumpStartAt = null;
-                      _pumpEndAt = null;
-                    } else if (_eventType == EventType.pump) {
-                      _feedMethod = null;
-                      _durationController.clear();
-                      _pumpStartAt ??= DateTime.now();
-                      _pumpEndAt ??= _pumpStartAt!.add(
-                        const Duration(minutes: 20),
-                      );
-                    } else {
-                      _feedMethod = null;
-                      _durationController.clear();
-                      _amountController.clear();
-                      _pumpStartAt = null;
-                      _pumpEndAt = null;
-                    }
-                  });
-                },
+              Text(
+                widget.initialEvent == null ? '新建记录' : '编辑记录',
+                style: textTheme.headlineSmall,
               ),
-              const SizedBox(height: 14),
-              if (_eventType != EventType.pump)
-                Row(
+              const SizedBox(height: WalnieTokens.spacingXs),
+              Text('按区块填写，减少漏填', style: textTheme.bodyMedium),
+              const SizedBox(height: WalnieTokens.spacingMd),
+              _SectionCard(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Icon(Icons.schedule),
-                    const SizedBox(width: 8),
-                    Text(DateFormat('MM-dd HH:mm').format(_occurredAt)),
-                    const Spacer(),
-                    TextButton(
-                      onPressed: _pickOccurredAt,
-                      child: const Text('修改时间'),
+                    Text('事件类型', style: textTheme.titleMedium),
+                    const SizedBox(height: WalnieTokens.spacingSm),
+                    SegmentedButton<EventType>(
+                      showSelectedIcon: false,
+                      segments: EventType.values
+                          .map(
+                            (type) => ButtonSegment<EventType>(
+                              value: type,
+                              label: Text(type.labelZh),
+                            ),
+                          )
+                          .toList(growable: false),
+                      selected: {_eventType},
+                      onSelectionChanged: (set) {
+                        setState(() {
+                          _eventType = set.first;
+                          if (_eventType == EventType.feed) {
+                            _feedMethod ??= FeedMethod.bottleBreastmilk;
+                            _pumpStartAt = null;
+                            _pumpEndAt = null;
+                          } else if (_eventType == EventType.pump) {
+                            _feedMethod = null;
+                            _durationController.clear();
+                            _pumpStartAt ??= DateTime.now();
+                            _pumpEndAt ??= _pumpStartAt!.add(
+                              const Duration(minutes: 20),
+                            );
+                          } else {
+                            _feedMethod = null;
+                            _durationController.clear();
+                            _amountController.clear();
+                            _pumpStartAt = null;
+                            _pumpEndAt = null;
+                          }
+                        });
+                      },
                     ),
                   ],
                 ),
-              if (_eventType == EventType.pump) ...[
-                Row(
+              ),
+              const SizedBox(height: WalnieTokens.spacingSm),
+              _SectionCard(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Icon(Icons.play_circle_outline),
-                    const SizedBox(width: 8),
-                    Text(
-                      DateFormat(
-                        'MM-dd HH:mm',
-                      ).format(_pumpStartAt ?? DateTime.now()),
-                    ),
-                    const Spacer(),
-                    TextButton(
-                      onPressed: _pickPumpStartAt,
-                      child: const Text('吸奶开始'),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                Row(
-                  children: [
-                    const Icon(Icons.stop_circle_outlined),
-                    const SizedBox(width: 8),
-                    Text(
-                      DateFormat(
-                        'MM-dd HH:mm',
-                      ).format(_pumpEndAt ?? DateTime.now()),
-                    ),
-                    const Spacer(),
-                    TextButton(
-                      onPressed: _pickPumpEndAt,
-                      child: const Text('吸奶结束'),
-                    ),
-                  ],
-                ),
-              ],
-              if (_eventType == EventType.feed) ...[
-                const SizedBox(height: 10),
-                DropdownButtonFormField<FeedMethod>(
-                  key: ValueKey(_feedMethod),
-                  initialValue: _feedMethod,
-                  decoration: const InputDecoration(
-                    labelText: '喂养方式',
-                    border: OutlineInputBorder(),
-                  ),
-                  items: FeedMethod.values
-                      .map(
-                        (item) => DropdownMenuItem<FeedMethod>(
-                          value: item,
-                          child: Text(item.labelZh),
-                        ),
-                      )
-                      .toList(growable: false),
-                  onChanged: (value) {
-                    setState(() {
-                      _feedMethod = value;
-                    });
-                  },
-                ),
-                const SizedBox(height: 10),
-                Row(
-                  children: [
-                    Expanded(
-                      child: TextField(
-                        controller: _durationController,
-                        keyboardType: TextInputType.number,
-                        decoration: const InputDecoration(
-                          labelText: '时长(分钟)',
-                          border: OutlineInputBorder(),
-                        ),
+                    Text('时间', style: textTheme.titleMedium),
+                    const SizedBox(height: WalnieTokens.spacingSm),
+                    if (_eventType != EventType.pump)
+                      Row(
+                        children: [
+                          const Icon(Icons.schedule),
+                          const SizedBox(width: WalnieTokens.spacingSm),
+                          Expanded(
+                            child: Text(
+                              DateFormat('MM-dd HH:mm').format(_occurredAt),
+                              style: textTheme.bodyLarge,
+                            ),
+                          ),
+                          TextButton(
+                            onPressed: _pickOccurredAt,
+                            child: const Text('修改时间'),
+                          ),
+                        ],
                       ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: TextField(
+                    if (_eventType == EventType.pump) ...[
+                      Row(
+                        children: [
+                          const Icon(Icons.play_circle_outline),
+                          const SizedBox(width: WalnieTokens.spacingSm),
+                          Expanded(
+                            child: Text(
+                              DateFormat(
+                                'MM-dd HH:mm',
+                              ).format(_pumpStartAt ?? DateTime.now()),
+                              style: textTheme.bodyLarge,
+                            ),
+                          ),
+                          TextButton(
+                            onPressed: _pickPumpStartAt,
+                            child: const Text('吸奶开始'),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: WalnieTokens.spacingSm),
+                      Row(
+                        children: [
+                          const Icon(Icons.stop_circle_outlined),
+                          const SizedBox(width: WalnieTokens.spacingSm),
+                          Expanded(
+                            child: Text(
+                              DateFormat(
+                                'MM-dd HH:mm',
+                              ).format(_pumpEndAt ?? DateTime.now()),
+                              style: textTheme.bodyLarge,
+                            ),
+                          ),
+                          TextButton(
+                            onPressed: _pickPumpEndAt,
+                            child: const Text('吸奶结束'),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              const SizedBox(height: WalnieTokens.spacingSm),
+              _SectionCard(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('核心信息', style: textTheme.titleMedium),
+                    const SizedBox(height: WalnieTokens.spacingSm),
+                    if (_eventType == EventType.feed) ...[
+                      DropdownButtonFormField<FeedMethod>(
+                        key: ValueKey(_feedMethod),
+                        initialValue: _feedMethod,
+                        decoration: const InputDecoration(labelText: '喂养方式'),
+                        items: FeedMethod.values
+                            .map(
+                              (item) => DropdownMenuItem<FeedMethod>(
+                                value: item,
+                                child: Text(item.labelZh),
+                              ),
+                            )
+                            .toList(growable: false),
+                        onChanged: (value) {
+                          setState(() {
+                            _feedMethod = value;
+                          });
+                        },
+                      ),
+                      const SizedBox(height: WalnieTokens.spacingSm),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: TextField(
+                              controller: _durationController,
+                              keyboardType: TextInputType.number,
+                              decoration: const InputDecoration(
+                                labelText: '时长(分钟)',
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: WalnieTokens.spacingSm),
+                          Expanded(
+                            child: TextField(
+                              controller: _amountController,
+                              keyboardType: TextInputType.number,
+                              decoration: const InputDecoration(
+                                labelText: '毫升(ml)',
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ] else if (_eventType == EventType.pump) ...[
+                      TextField(
                         controller: _amountController,
                         keyboardType: TextInputType.number,
-                        decoration: const InputDecoration(
-                          labelText: '毫升(ml)',
-                          border: OutlineInputBorder(),
-                        ),
+                        decoration: const InputDecoration(labelText: '奶量(ml)'),
                       ),
+                    ] else
+                      Text('当前事件无需额外字段', style: textTheme.bodyMedium),
+                  ],
+                ),
+              ),
+              const SizedBox(height: WalnieTokens.spacingSm),
+              _SectionCard(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('备注', style: textTheme.titleMedium),
+                    const SizedBox(height: WalnieTokens.spacingSm),
+                    TextField(
+                      controller: _noteController,
+                      maxLines: 3,
+                      decoration: const InputDecoration(labelText: '备注(可选)'),
                     ),
                   ],
                 ),
-              ] else if (_eventType == EventType.pump) ...[
-                const SizedBox(height: 10),
-                TextField(
-                  controller: _amountController,
-                  keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(
-                    labelText: '奶量(ml)',
-                    border: OutlineInputBorder(),
-                  ),
-                ),
-              ],
-              const SizedBox(height: 10),
-              TextField(
-                controller: _noteController,
-                maxLines: 2,
-                decoration: const InputDecoration(
-                  labelText: '备注(可选)',
-                  border: OutlineInputBorder(),
-                ),
               ),
-              const SizedBox(height: 14),
+              const SizedBox(height: WalnieTokens.spacingMd),
               SizedBox(
                 width: double.infinity,
-                child: FilledButton(
+                child: FilledButton.icon(
                   onPressed: _submitting ? null : _submit,
-                  child: _submitting
+                  icon: _submitting
                       ? const SizedBox.square(
-                          dimension: 18,
+                          dimension: 16,
                           child: CircularProgressIndicator(strokeWidth: 2),
                         )
-                      : const Text('确认保存'),
+                      : const Icon(Icons.check),
+                  label: Text(_submitting ? '保存中...' : '确认保存'),
                 ),
               ),
               if (widget.initialEvent != null && widget.onDelete != null) ...[
-                const SizedBox(height: 8),
-                SizedBox(
+                const SizedBox(height: WalnieTokens.spacingSm),
+                Container(
                   width: double.infinity,
+                  padding: const EdgeInsets.all(WalnieTokens.spacingSm),
+                  decoration: BoxDecoration(
+                    color: colorScheme.errorContainer,
+                    borderRadius: BorderRadius.circular(WalnieTokens.radiusMd),
+                    border: Border.all(
+                      color: colorScheme.error.withValues(alpha: 0.4),
+                    ),
+                  ),
                   child: TextButton.icon(
                     onPressed: _submitting ? null : _delete,
                     icon: const Icon(Icons.delete_outline),
                     label: const Text('删除记录'),
                     style: TextButton.styleFrom(
-                      foregroundColor: Theme.of(context).colorScheme.error,
+                      foregroundColor: colorScheme.onErrorContainer,
                     ),
                   ),
                 ),
@@ -467,5 +522,21 @@ class _EventEditorSheetState extends State<EventEditorSheet> {
         });
       }
     }
+  }
+}
+
+class _SectionCard extends StatelessWidget {
+  const _SectionCard({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(WalnieTokens.spacingMd),
+        child: child,
+      ),
+    );
   }
 }

@@ -5,6 +5,8 @@ import 'package:baby_tracker/domain/entities/voice_intent.dart';
 import 'package:baby_tracker/domain/services/voice_command_service.dart';
 import 'package:baby_tracker/presentation/controllers/home_controller.dart';
 import 'package:baby_tracker/presentation/controllers/home_state.dart';
+import 'package:baby_tracker/presentation/theme/walnie_theme_extensions.dart';
+import 'package:baby_tracker/presentation/theme/walnie_tokens.dart';
 import 'package:baby_tracker/presentation/utils/voice_payload_mapper.dart';
 import 'package:baby_tracker/presentation/widgets/event_editor_sheet.dart';
 import 'package:baby_tracker/presentation/widgets/summary_card.dart';
@@ -19,10 +21,7 @@ class HomePage extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final homeStateAsync = ref.watch(homeControllerProvider);
-    final voiceButtonWidth = (MediaQuery.sizeOf(context).width - 64).clamp(
-      220.0,
-      360.0,
-    );
+    final parserUseCase = ref.read(parseVoiceCommandUseCaseProvider);
 
     return Scaffold(
       appBar: AppBar(
@@ -52,16 +51,17 @@ class HomePage extends ConsumerWidget {
           },
           onRefresh: () =>
               ref.read(homeControllerProvider.notifier).refreshData(),
+          onOpenReminderSettings: () => _showIntervalSelector(context, ref),
         ),
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (error, _) => Center(
           child: Padding(
-            padding: const EdgeInsets.all(20),
+            padding: const EdgeInsets.all(WalnieTokens.spacingXl),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text('加载失败：$error'),
-                const SizedBox(height: 10),
+                const SizedBox(height: WalnieTokens.spacingSm),
                 FilledButton(
                   onPressed: () =>
                       ref.read(homeControllerProvider.notifier).refreshData(),
@@ -72,19 +72,18 @@ class HomePage extends ConsumerWidget {
           ),
         ),
       ),
-      floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
-      floatingActionButton: GestureDetector(
-        onLongPressStart: (_) => _handleVoiceCommand(context, ref),
-        child: SizedBox(
-          width: voiceButtonWidth.toDouble(),
-          child: FloatingActionButton.extended(
-            onPressed: () {
-              ScaffoldMessenger.of(
-                context,
-              ).showSnackBar(const SnackBar(content: Text('按住按钮开始语音识别')));
-            },
-            icon: const Icon(Icons.mic),
-            label: const Text('按住说话'),
+      bottomNavigationBar: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(
+            WalnieTokens.spacingLg,
+            0,
+            WalnieTokens.spacingLg,
+            WalnieTokens.spacingLg,
+          ),
+          child: _VoiceActionBar(
+            onVoiceTap: () => _handleVoiceCommand(context, ref),
+            onTextTap: () => _showTextInputDialog(context, ref, parserUseCase),
           ),
         ),
       ),
@@ -100,19 +99,19 @@ class HomePage extends ConsumerWidget {
 
     final value = await showModalBottomSheet<int>(
       context: context,
-      showDragHandle: true,
       builder: (context) {
         return SafeArea(
           child: Padding(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.all(WalnieTokens.spacingLg),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text('喂奶提醒间隔', style: Theme.of(context).textTheme.titleLarge),
-                const SizedBox(height: 10),
+                const SizedBox(height: WalnieTokens.spacingMd),
                 Wrap(
-                  spacing: 8,
+                  spacing: WalnieTokens.spacingSm,
+                  runSpacing: WalnieTokens.spacingSm,
                   children: List<Widget>.generate(6, (index) {
                     final hour = index + 1;
                     final selected = hour == current;
@@ -154,7 +153,6 @@ class HomePage extends ConsumerWidget {
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
-      showDragHandle: true,
       builder: (context) {
         return EventEditorSheet(
           initialType: initialType,
@@ -179,10 +177,7 @@ class HomePage extends ConsumerWidget {
 
     final action = await showVoiceRecordingSheet(context);
 
-    if (action == null) {
-      return;
-    }
-    if (!context.mounted) {
+    if (action == null || !context.mounted) {
       return;
     }
 
@@ -190,7 +185,12 @@ class HomePage extends ConsumerWidget {
       case VoiceRecordingAction.cancel:
         return;
       case VoiceRecordingAction.toText:
-        _showTextInputDialog(context, ref, parserUseCase);
+        _showTextInputDialog(
+          context,
+          ref,
+          parserUseCase,
+          initialText: action.transcript,
+        );
         return;
       case VoiceRecordingAction.proceed:
         break;
@@ -198,27 +198,42 @@ class HomePage extends ConsumerWidget {
 
     final transcript = action.transcript.trim();
     if (transcript.isEmpty) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('没有识别到有效语音，请再试一次')));
-      }
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('没有识别到有效语音，请再试一次')));
       return;
     }
 
+    final cancellationToken = VoiceParseCancellationToken();
+
     try {
-      _showVoiceProgress(context, '语音已发送，正在匹配本地规则...');
+      _showVoiceProgress(
+        context,
+        '语音已发送，正在匹配本地规则...',
+        onCancel: () {
+          cancellationToken.cancel();
+          _clearVoiceProgress(context);
+        },
+      );
       final intent = await parserUseCase.fromTranscript(
         transcript,
+        cancellationToken: cancellationToken,
         onProgress: (progress) {
-          if (!context.mounted) {
+          if (!context.mounted || cancellationToken.isCancelled) {
             return;
           }
-          _showVoiceProgress(context, _voiceProgressText(progress));
+          _showVoiceProgress(
+            context,
+            _voiceProgressText(progress),
+            onCancel: () {
+              cancellationToken.cancel();
+              _clearVoiceProgress(context);
+            },
+          );
         },
       );
 
-      if (!context.mounted) {
+      if (!context.mounted || cancellationToken.isCancelled) {
         return;
       }
       _clearVoiceProgress(context);
@@ -242,6 +257,9 @@ class HomePage extends ConsumerWidget {
     } catch (error) {
       if (context.mounted) {
         _clearVoiceProgress(context);
+        if (error is VoiceParseCancelledException) {
+          return;
+        }
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(SnackBar(content: Text('语音处理失败：$error')));
@@ -252,56 +270,76 @@ class HomePage extends ConsumerWidget {
   Future<void> _showTextInputDialog(
     BuildContext context,
     WidgetRef ref,
-    ParseVoiceCommandUseCase parserUseCase,
-  ) async {
-    final controller = TextEditingController();
-    final result = await showDialog<String>(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: const Text('输入指令'),
-          content: TextField(
-            controller: controller,
-            decoration: const InputDecoration(
-              hintText: '例如：记录吃奶 20分钟',
-              border: OutlineInputBorder(),
-            ),
-            autofocus: true,
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('取消'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.of(context).pop(controller.text),
-              child: const Text('确定'),
-            ),
-          ],
-        );
-      },
+    ParseVoiceCommandUseCase parserUseCase, {
+    String initialText = '',
+  }) async {
+    final controller = TextEditingController(text: initialText);
+    controller.selection = TextSelection.collapsed(
+      offset: controller.text.length,
     );
+    String? result;
+    try {
+      result = await showDialog<String>(
+        context: context,
+        builder: (context) {
+          return AlertDialog(
+            title: const Text('输入指令'),
+            content: TextField(
+              controller: controller,
+              decoration: const InputDecoration(hintText: '例如：记录吃奶 20分钟'),
+              autofocus: true,
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('取消'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.of(context).pop(controller.text),
+                child: const Text('确定'),
+              ),
+            ],
+          );
+        },
+      );
+    } finally {
+      controller.dispose();
+    }
 
-    if (result == null || result.isEmpty) {
+    if (result == null || result.isEmpty || !context.mounted) {
       return;
     }
-    if (!context.mounted) {
-      return;
-    }
+
+    final cancellationToken = VoiceParseCancellationToken();
 
     try {
-      _showVoiceProgress(context, '正在匹配本地规则...');
+      _showVoiceProgress(
+        context,
+        '正在匹配本地规则...',
+        onCancel: () {
+          cancellationToken.cancel();
+          _clearVoiceProgress(context);
+        },
+      );
       final intent = await parserUseCase.fromTranscript(
         result,
+        cancellationToken: cancellationToken,
         onProgress: (progress) {
-          if (!context.mounted) {
+          if (!context.mounted || cancellationToken.isCancelled) {
             return;
           }
-          _showVoiceProgress(context, _voiceProgressText(progress));
+          _showVoiceProgress(
+            context,
+            _voiceProgressText(progress),
+            onCancel: () {
+              cancellationToken.cancel();
+              _clearVoiceProgress(context);
+            },
+          );
         },
       );
 
-      if (!context.mounted) {
+      if (!context.mounted || cancellationToken.isCancelled) {
         return;
       }
       _clearVoiceProgress(context);
@@ -325,6 +363,9 @@ class HomePage extends ConsumerWidget {
     } catch (error) {
       if (context.mounted) {
         _clearVoiceProgress(context);
+        if (error is VoiceParseCancelledException) {
+          return;
+        }
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(SnackBar(content: Text('处理失败：$error')));
@@ -347,27 +388,30 @@ class HomePage extends ConsumerWidget {
     }
   }
 
-  void _showVoiceProgress(BuildContext context, String message) {
+  void _showVoiceProgress(
+    BuildContext context,
+    String message, {
+    VoidCallback? onCancel,
+  }) {
     final messenger = ScaffoldMessenger.of(context);
     messenger.hideCurrentSnackBar();
     messenger.showSnackBar(
       SnackBar(
         duration: const Duration(minutes: 1),
-        behavior: SnackBarBehavior.floating,
         content: Row(
           children: [
             const SizedBox(
               width: 16,
               height: 16,
-              child: CircularProgressIndicator(
-                strokeWidth: 2,
-                color: Colors.white,
-              ),
+              child: CircularProgressIndicator(strokeWidth: 2),
             ),
-            const SizedBox(width: 10),
+            const SizedBox(width: WalnieTokens.spacingSm),
             Expanded(child: Text(message)),
           ],
         ),
+        action: onCancel == null
+            ? null
+            : SnackBarAction(label: '取消', onPressed: onCancel),
       ),
     );
   }
@@ -387,7 +431,6 @@ class HomePage extends ConsumerWidget {
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
-      showDragHandle: true,
       builder: (context) {
         return EventEditorSheet(
           initialType: initialEvent.type,
@@ -474,6 +517,57 @@ class HomePage extends ConsumerWidget {
   }
 }
 
+class _VoiceActionBar extends StatelessWidget {
+  const _VoiceActionBar({required this.onVoiceTap, required this.onTextTap});
+
+  final VoidCallback onVoiceTap;
+  final VoidCallback onTextTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
+    return Container(
+      padding: const EdgeInsets.all(WalnieTokens.spacingSm),
+      decoration: BoxDecoration(
+        color: colorScheme.surface,
+        borderRadius: BorderRadius.circular(WalnieTokens.radiusLg),
+        border: Border.all(color: colorScheme.outlineVariant),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            flex: 3,
+            child: Semantics(
+              button: true,
+              label: '语音录入',
+              child: FilledButton.icon(
+                onPressed: onVoiceTap,
+                icon: const Icon(Icons.mic_rounded),
+                label: const Text('语音录入'),
+              ),
+            ),
+          ),
+          const SizedBox(width: WalnieTokens.spacingSm),
+          Expanded(
+            flex: 2,
+            child: Semantics(
+              button: true,
+              label: '文字输入',
+              child: OutlinedButton.icon(
+                onPressed: onTextTap,
+                icon: const Icon(Icons.keyboard_alt_outlined),
+                label: const Text('文字'),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _HomeContent extends StatelessWidget {
   const _HomeContent({
     required this.state,
@@ -481,6 +575,7 @@ class _HomeContent extends StatelessWidget {
     required this.onEditEvent,
     required this.onSelectFilter,
     required this.onRefresh,
+    required this.onOpenReminderSettings,
   });
 
   final HomeState state;
@@ -488,149 +583,62 @@ class _HomeContent extends StatelessWidget {
   final void Function(BabyEvent event) onEditEvent;
   final void Function(EventType type) onSelectFilter;
   final Future<void> Function() onRefresh;
+  final VoidCallback onOpenReminderSettings;
 
   @override
   Widget build(BuildContext context) {
+    final summaryItems = _summaryItems(state);
+    final firstRowItems = summaryItems.take(3).toList(growable: false);
+    final secondRowItems = summaryItems.skip(3).toList(growable: false);
+
     return RefreshIndicator(
       onRefresh: onRefresh,
       child: ListView(
         physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.fromLTRB(
+          WalnieTokens.spacingLg,
+          WalnieTokens.spacingLg,
+          WalnieTokens.spacingLg,
+          WalnieTokens.spacing2xl,
+        ),
         children: [
-          Row(
-            children: [
-              SummaryCard(
-                title: '吃奶',
-                value: '${state.todaySummary.feedCount}',
-                icon: Icons.local_drink,
-                selected: state.filterType == EventType.feed,
-                onTap: () => onSelectFilter(EventType.feed),
-                compact: true,
-              ),
-              const SizedBox(width: 8),
-              SummaryCard(
-                title: '便便',
-                value: '${state.todaySummary.poopCount}',
-                icon: Icons.baby_changing_station,
-                selected: state.filterType == EventType.poop,
-                onTap: () => onSelectFilter(EventType.poop),
-                compact: true,
-              ),
-              const SizedBox(width: 8),
-              SummaryCard(
-                title: '尿尿',
-                value: '${state.todaySummary.peeCount}',
-                icon: Icons.water_drop,
-                selected: state.filterType == EventType.pee,
-                onTap: () => onSelectFilter(EventType.pee),
-                compact: true,
-              ),
-            ],
+          _BrandHeader(
+            state: state,
+            onOpenReminderSettings: onOpenReminderSettings,
           ),
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              SummaryCard(
-                title: '换尿布',
-                value: '${state.todaySummary.diaperCount}',
-                icon: Icons.checkroom,
-                selected: state.filterType == EventType.diaper,
-                onTap: () => onSelectFilter(EventType.diaper),
-                compact: true,
-              ),
-              const SizedBox(width: 8),
-              SummaryCard(
-                title: '吸奶',
-                value: '${state.todaySummary.pumpCount}',
-                icon: Icons.science,
-                selected: state.filterType == EventType.pump,
-                onTap: () => onSelectFilter(EventType.pump),
-                compact: true,
-              ),
-              const SizedBox(width: 8),
-              const Expanded(child: SizedBox.shrink()),
-            ],
+          const SizedBox(height: WalnieTokens.spacingLg),
+          _SectionHeader(
+            title: '今日概览',
+            subtitle: state.filterType == null
+                ? '点击卡片可筛选时间线'
+                : '当前筛选：${state.filterType!.labelZh}',
           ),
-          const SizedBox(height: 14),
-          Container(
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(
-              color: const Color(0xFFEFF8F5),
-              borderRadius: BorderRadius.circular(14),
-            ),
-            child: Row(
-              children: [
-                const Icon(Icons.alarm),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    state.nextReminderAt == null
-                        ? '下次提醒：暂无（先记录一条喂奶）'
-                        : '下次提醒：${DateFormat('MM-dd HH:mm').format(state.nextReminderAt!)}',
-                  ),
-                ),
-              ],
-            ),
+          const SizedBox(height: WalnieTokens.spacingSm),
+          _SummaryOverviewRows(
+            firstRowItems: firstRowItems,
+            secondRowItems: secondRowItems,
+            selectedType: state.filterType,
+            onSelectFilter: onSelectFilter,
           ),
-          const SizedBox(height: 14),
-          Row(
-            children: [
-              Expanded(
-                child: FilledButton.tonal(
-                  onPressed: () => onAddEvent(EventType.feed),
-                  child: const Text('记录吃奶'),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: FilledButton.tonal(
-                  onPressed: () => onAddEvent(EventType.poop),
-                  child: const Text('记录便便'),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: FilledButton.tonal(
-                  onPressed: () => onAddEvent(EventType.pee),
-                  child: const Text('记录尿尿'),
-                ),
-              ),
-            ],
+          const SizedBox(height: WalnieTokens.spacingLg),
+          const _SectionHeader(title: '快速记录', subtitle: '主操作优先展示，减少录入路径'),
+          const SizedBox(height: WalnieTokens.spacingSm),
+          _QuickActions(onAddEvent: onAddEvent),
+          const SizedBox(height: WalnieTokens.spacingXl),
+          _SectionHeader(
+            title: _timelineTitle(state.filterType),
+            subtitle: '按天分组，点击可编辑',
           ),
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              Expanded(
-                child: FilledButton.tonal(
-                  onPressed: () => onAddEvent(EventType.diaper),
-                  child: const Text('记录换尿布'),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: FilledButton.tonal(
-                  onPressed: () => onAddEvent(EventType.pump),
-                  child: const Text('记录吸奶'),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 18),
-          Text(
-            _timelineTitle(state.filterType),
-            style: Theme.of(
-              context,
-            ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
-          ),
-          const SizedBox(height: 10),
+          const SizedBox(height: WalnieTokens.spacingSm),
           if (state.timeline.isEmpty)
-            Container(
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(14),
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(WalnieTokens.spacingXl),
+                child: Text(
+                  '暂无记录，先新增一条吧。',
+                  style: Theme.of(context).textTheme.bodyLarge,
+                ),
               ),
-              child: const Text('暂无记录，先新增一条吧。'),
             )
           else
             ..._groupEventsByDay(state.timeline).asMap().entries.map(
@@ -646,6 +654,277 @@ class _HomeContent extends StatelessWidget {
   }
 }
 
+class _SummaryOverviewRows extends StatelessWidget {
+  const _SummaryOverviewRows({
+    required this.firstRowItems,
+    required this.secondRowItems,
+    required this.selectedType,
+    required this.onSelectFilter,
+  });
+
+  final List<_SummaryItem> firstRowItems;
+  final List<_SummaryItem> secondRowItems;
+  final EventType? selectedType;
+  final void Function(EventType type) onSelectFilter;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        _SummaryOverviewRow(
+          items: firstRowItems,
+          selectedType: selectedType,
+          onSelectFilter: onSelectFilter,
+        ),
+        if (secondRowItems.isNotEmpty) ...[
+          const SizedBox(height: WalnieTokens.spacingSm),
+          _SummaryOverviewRow(
+            items: secondRowItems,
+            selectedType: selectedType,
+            onSelectFilter: onSelectFilter,
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+class _SummaryOverviewRow extends StatelessWidget {
+  const _SummaryOverviewRow({
+    required this.items,
+    required this.selectedType,
+    required this.onSelectFilter,
+  });
+
+  final List<_SummaryItem> items;
+  final EventType? selectedType;
+  final void Function(EventType type) onSelectFilter;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 116,
+      child: Row(
+        children: [
+          for (var i = 0; i < items.length; i++) ...[
+            if (i > 0) const SizedBox(width: WalnieTokens.spacingSm),
+            Expanded(
+              child: SummaryCard(
+                title: items[i].title,
+                value: items[i].value,
+                icon: items[i].icon,
+                accentColor: _accentColor(context, items[i].type),
+                selected: selectedType == items[i].type,
+                onTap: () => onSelectFilter(items[i].type),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _SectionHeader extends StatelessWidget {
+  const _SectionHeader({required this.title, required this.subtitle});
+
+  final String title;
+  final String subtitle;
+
+  @override
+  Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(title, style: textTheme.titleLarge),
+        const SizedBox(height: WalnieTokens.spacingXs),
+        Text(subtitle, style: textTheme.bodyMedium),
+      ],
+    );
+  }
+}
+
+class _BrandHeader extends StatelessWidget {
+  const _BrandHeader({
+    required this.state,
+    required this.onOpenReminderSettings,
+  });
+
+  final HomeState state;
+  final VoidCallback onOpenReminderSettings;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final todayTotal =
+        state.todaySummary.feedCount +
+        state.todaySummary.poopCount +
+        state.todaySummary.peeCount +
+        state.todaySummary.diaperCount +
+        state.todaySummary.pumpCount;
+
+    return Container(
+      padding: const EdgeInsets.all(WalnieTokens.spacingLg),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(WalnieTokens.radiusXl),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [colorScheme.primaryContainer, colorScheme.surface],
+        ),
+        border: Border.all(color: colorScheme.outlineVariant),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Walnie', style: theme.textTheme.headlineSmall),
+          const SizedBox(height: WalnieTokens.spacingXs),
+          Text('今天累计记录 $todayTotal 条', style: theme.textTheme.bodyLarge),
+          const SizedBox(height: WalnieTokens.spacingLg),
+          Container(
+            padding: const EdgeInsets.all(WalnieTokens.spacingMd),
+            decoration: BoxDecoration(
+              color: colorScheme.surface.withValues(alpha: 0.9),
+              borderRadius: BorderRadius.circular(WalnieTokens.radiusMd),
+              border: Border.all(color: colorScheme.outlineVariant),
+            ),
+            child: Row(
+              children: [
+                Icon(Icons.alarm, color: colorScheme.primary),
+                const SizedBox(width: WalnieTokens.spacingSm),
+                Expanded(
+                  child: Text(
+                    state.nextReminderAt == null
+                        ? '下次提醒：暂无（先记录一条喂奶）'
+                        : '下次提醒：${DateFormat('MM-dd HH:mm').format(state.nextReminderAt!)}',
+                    style: theme.textTheme.bodyMedium,
+                  ),
+                ),
+                TextButton(
+                  onPressed: onOpenReminderSettings,
+                  child: const Text('设置'),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _QuickActions extends StatelessWidget {
+  const _QuickActions({required this.onAddEvent});
+
+  final void Function(EventType type) onAddEvent;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: FilledButton.icon(
+                onPressed: () => onAddEvent(EventType.feed),
+                icon: const Icon(Icons.local_drink),
+                label: const Text('记录吃奶'),
+              ),
+            ),
+            const SizedBox(width: WalnieTokens.spacingSm),
+            Expanded(
+              child: FilledButton.icon(
+                onPressed: () => onAddEvent(EventType.pump),
+                icon: const Icon(Icons.science),
+                label: const Text('记录吸奶'),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: WalnieTokens.spacingSm),
+        Row(
+          children: [
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed: () => onAddEvent(EventType.poop),
+                icon: const Icon(Icons.baby_changing_station),
+                label: const Text('便便'),
+              ),
+            ),
+            const SizedBox(width: WalnieTokens.spacingSm),
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed: () => onAddEvent(EventType.pee),
+                icon: const Icon(Icons.water_drop),
+                label: const Text('尿尿'),
+              ),
+            ),
+            const SizedBox(width: WalnieTokens.spacingSm),
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed: () => onAddEvent(EventType.diaper),
+                icon: const Icon(Icons.checkroom),
+                label: const Text('换尿布'),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+class _SummaryItem {
+  const _SummaryItem({
+    required this.type,
+    required this.title,
+    required this.value,
+    required this.icon,
+  });
+
+  final EventType type;
+  final String title;
+  final String value;
+  final IconData icon;
+}
+
+List<_SummaryItem> _summaryItems(HomeState state) {
+  return [
+    _SummaryItem(
+      type: EventType.feed,
+      title: '吃奶',
+      value: '${state.todaySummary.feedCount}',
+      icon: Icons.local_drink,
+    ),
+    _SummaryItem(
+      type: EventType.poop,
+      title: '便便',
+      value: '${state.todaySummary.poopCount}',
+      icon: Icons.baby_changing_station,
+    ),
+    _SummaryItem(
+      type: EventType.pee,
+      title: '尿尿',
+      value: '${state.todaySummary.peeCount}',
+      icon: Icons.water_drop,
+    ),
+    _SummaryItem(
+      type: EventType.diaper,
+      title: '换尿布',
+      value: '${state.todaySummary.diaperCount}',
+      icon: Icons.checkroom,
+    ),
+    _SummaryItem(
+      type: EventType.pump,
+      title: '吸奶',
+      value: '${state.todaySummary.pumpCount}',
+      icon: Icons.science,
+    ),
+  ];
+}
+
 class _TimelineDaySection extends StatelessWidget {
   const _TimelineDaySection({
     required this.group,
@@ -659,65 +938,53 @@ class _TimelineDaySection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final headingStyle = Theme.of(
-      context,
-    ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700);
+    final theme = Theme.of(context);
+    final timeline = theme.timelineColors;
 
     return Padding(
-      padding: const EdgeInsets.only(bottom: 14),
+      padding: const EdgeInsets.only(bottom: WalnieTokens.spacingMd),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(_dayLabel(group.dayStart), style: headingStyle),
-          const SizedBox(height: 8),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: const Color(0xFFE9ECEF)),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.03),
-                  blurRadius: 10,
-                  offset: const Offset(0, 4),
-                ),
-              ],
-            ),
-            child: Column(
-              children: [
-                Row(
-                  children: [
-                    Container(
-                      width: 6,
-                      height: 6,
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFB857D9),
-                        borderRadius: BorderRadius.circular(99),
+          Text(_dayLabel(group.dayStart), style: theme.textTheme.titleMedium),
+          const SizedBox(height: WalnieTokens.spacingSm),
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(WalnieTokens.spacingMd),
+              child: Column(
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        width: 8,
+                        height: 8,
+                        decoration: BoxDecoration(
+                          color: timeline.groupDot,
+                          borderRadius: BorderRadius.circular(99),
+                        ),
                       ),
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      _groupSummaryLabel(group.events),
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: Colors.black54,
-                        fontWeight: FontWeight.w600,
+                      const SizedBox(width: WalnieTokens.spacingSm),
+                      Text(
+                        _groupSummaryLabel(group.events),
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                const Divider(height: 1, color: Color(0xFFEDEFF2)),
-                const SizedBox(height: 6),
-                ...group.events.asMap().entries.map((entry) {
-                  return _TimelineTrackItem(
-                    event: entry.value,
-                    isLast: entry.key == group.events.length - 1,
-                    showRelative: showRelativeOnFirst && entry.key == 0,
-                    onTap: () => onTapEvent(entry.value),
-                  );
-                }),
-              ],
+                    ],
+                  ),
+                  const SizedBox(height: WalnieTokens.spacingSm),
+                  Divider(height: 1, color: theme.colorScheme.outlineVariant),
+                  const SizedBox(height: WalnieTokens.spacingXs),
+                  ...group.events.asMap().entries.map((entry) {
+                    return _TimelineTrackItem(
+                      event: entry.value,
+                      isLast: entry.key == group.events.length - 1,
+                      showRelative: showRelativeOnFirst && entry.key == 0,
+                      onTap: () => onTapEvent(entry.value),
+                    );
+                  }),
+                ],
+              ),
             ),
           ),
         ],
@@ -741,110 +1008,111 @@ class _TimelineTrackItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final accent = _accentColor(event.type);
-    final textMuted = Colors.black45;
-    final textStrong = Colors.black87;
-    final textNormal = Colors.black54;
+    final theme = Theme.of(context);
+    final timeline = theme.timelineColors;
+    final accent = _accentColor(context, event.type);
 
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 8),
-        child: IntrinsicHeight(
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              SizedBox(
-                width: 48,
-                child: Padding(
-                  padding: const EdgeInsets.only(top: 2),
-                  child: Text(
-                    DateFormat('HH:mm').format(event.occurredAt),
-                    style: Theme.of(
-                      context,
-                    ).textTheme.bodyLarge?.copyWith(color: textMuted),
+    return Semantics(
+      button: true,
+      label:
+          '${event.type.labelZh}，${DateFormat('HH:mm').format(event.occurredAt)}，${_subtitleFor(event)}',
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(WalnieTokens.radiusMd),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: WalnieTokens.spacingSm),
+          child: IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                SizedBox(
+                  width: 48,
+                  child: Padding(
+                    padding: const EdgeInsets.only(top: 2),
+                    child: Text(
+                      DateFormat('HH:mm').format(event.occurredAt),
+                      style: theme.textTheme.bodyMedium,
+                    ),
                   ),
                 ),
-              ),
-              const SizedBox(width: 6),
-              SizedBox(
-                width: 16,
-                child: Column(
-                  children: [
-                    const SizedBox(height: 4),
-                    Container(
-                      width: 8,
-                      height: 8,
-                      decoration: BoxDecoration(
-                        color: accent,
-                        borderRadius: BorderRadius.circular(99),
-                      ),
-                    ),
-                    if (!isLast)
-                      Expanded(
-                        child: Container(
-                          width: 1,
-                          margin: const EdgeInsets.only(top: 6),
-                          color: const Color(0xFFE6EAF0),
+                const SizedBox(width: WalnieTokens.spacingSm),
+                SizedBox(
+                  width: 18,
+                  child: Column(
+                    children: [
+                      const SizedBox(height: 4),
+                      Container(
+                        width: 9,
+                        height: 9,
+                        decoration: BoxDecoration(
+                          color: accent,
+                          borderRadius: BorderRadius.circular(99),
                         ),
                       ),
-                  ],
+                      if (!isLast)
+                        Expanded(
+                          child: Container(
+                            width: 1.5,
+                            margin: const EdgeInsets.only(top: 6),
+                            color: timeline.trackLine,
+                          ),
+                        ),
+                    ],
+                  ),
                 ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Icon(_iconFor(event.type), size: 17, color: accent),
-                        const SizedBox(width: 6),
-                        Text(
-                          event.type.labelZh,
-                          style: Theme.of(
-                            context,
-                          ).textTheme.titleMedium?.copyWith(color: textStrong),
-                        ),
-                        const Spacer(),
-                        Text(
-                          _primaryMetric(event),
-                          style: Theme.of(
-                            context,
-                          ).textTheme.titleMedium?.copyWith(color: textStrong),
+                const SizedBox(width: WalnieTokens.spacingSm),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(_iconFor(event.type), size: 18, color: accent),
+                          const SizedBox(width: WalnieTokens.spacingSm),
+                          Expanded(
+                            child: Text(
+                              event.type.labelZh,
+                              style: theme.textTheme.titleMedium,
+                            ),
+                          ),
+                          Text(
+                            _primaryMetric(event),
+                            style: theme.textTheme.titleSmall,
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: WalnieTokens.spacingXs),
+                      Text(
+                        _subtitleFor(event),
+                        style: theme.textTheme.bodyMedium,
+                      ),
+                      if (showRelative) ...[
+                        const SizedBox(height: WalnieTokens.spacingSm),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: WalnieTokens.spacingSm,
+                            vertical: WalnieTokens.spacingXs,
+                          ),
+                          decoration: BoxDecoration(
+                            color: timeline.relativeChipBackground,
+                            borderRadius: BorderRadius.circular(
+                              WalnieTokens.radiusSm,
+                            ),
+                          ),
+                          child: Text(
+                            _relativeText(event.occurredAt),
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: timeline.relativeChipForeground,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
                         ),
                       ],
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      _subtitleFor(event),
-                      style: Theme.of(
-                        context,
-                      ).textTheme.bodyLarge?.copyWith(color: textNormal),
-                    ),
-                    if (showRelative) ...[
-                      const SizedBox(height: 6),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 2,
-                        ),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFFFE7F3),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Text(
-                          _relativeText(event.occurredAt),
-                          style: Theme.of(context).textTheme.bodyMedium
-                              ?.copyWith(color: const Color(0xFFB43A71)),
-                        ),
-                      ),
                     ],
-                  ],
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
@@ -874,18 +1142,19 @@ IconData _iconFor(EventType type) {
   }
 }
 
-Color _accentColor(EventType type) {
+Color _accentColor(BuildContext context, EventType type) {
+  final colors = Theme.of(context).timelineColors;
   switch (type) {
     case EventType.feed:
-      return const Color(0xFF8E44AD);
+      return colors.feed;
     case EventType.poop:
-      return const Color(0xFFE67E22);
+      return colors.poop;
     case EventType.pee:
-      return const Color(0xFF3498DB);
+      return colors.pee;
     case EventType.diaper:
-      return const Color(0xFFF1C40F);
+      return colors.diaper;
     case EventType.pump:
-      return const Color(0xFFB857D9);
+      return colors.pump;
   }
 }
 
@@ -1016,5 +1285,5 @@ String _timelineTitle(EventType? filterType) {
   if (filterType == null) {
     return '时间线';
   }
-  return '${filterType.labelZh}-时间线';
+  return '${filterType.labelZh} · 时间线';
 }

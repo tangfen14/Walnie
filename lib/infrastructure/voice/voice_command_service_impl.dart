@@ -66,9 +66,18 @@ class VoiceCommandServiceImpl implements VoiceCommandService {
   Future<VoiceIntent> parse(
     String transcript, {
     VoiceParseProgressListener? onProgress,
+    VoiceParseCancellationToken? cancellationToken,
   }) async {
+    if (cancellationToken?.isCancelled == true) {
+      throw const VoiceParseCancelledException();
+    }
+
     onProgress?.call(VoiceParseProgress.ruleMatching);
     final ruleIntent = _ruleBasedIntentParser.parse(transcript);
+
+    if (cancellationToken?.isCancelled == true) {
+      throw const VoiceParseCancelledException();
+    }
 
     if (ruleIntent.intentType != VoiceIntentType.unknown) {
       onProgress?.call(VoiceParseProgress.ruleMatched);
@@ -76,12 +85,22 @@ class VoiceCommandServiceImpl implements VoiceCommandService {
     }
 
     onProgress?.call(VoiceParseProgress.fallbackToLlm);
-    final llmIntent = await _llmFallbackParser.parse(transcript);
+    final llmIntent = await _llmFallbackParser.parse(
+      transcript,
+      cancellationToken: cancellationToken,
+    );
+    if (cancellationToken?.isCancelled == true) {
+      throw const VoiceParseCancelledException();
+    }
+
     if (llmIntent != null && llmIntent.intentType != VoiceIntentType.unknown) {
       onProgress?.call(VoiceParseProgress.llmMatched);
       return llmIntent;
     }
 
+    if (cancellationToken?.isCancelled == true) {
+      throw const VoiceParseCancelledException();
+    }
     onProgress?.call(VoiceParseProgress.unknown);
     return VoiceIntent.unknown(transcript: transcript);
   }

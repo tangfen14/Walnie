@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:math' as math;
 
+import 'package:baby_tracker/presentation/theme/walnie_theme_extensions.dart';
+import 'package:baby_tracker/presentation/theme/walnie_tokens.dart';
 import 'package:flutter/material.dart';
 import 'package:speech_to_text/speech_to_text.dart';
 
@@ -16,14 +18,7 @@ enum VoiceRecordingAction {
   toText,
 }
 
-/// A WeChat-style voice recording bottom sheet
-///
-/// Features:
-/// - Full-screen overlay with dark background
-/// - Real-time volume wave animation
-/// - Real-time transcription display
-/// - Swipe left to cancel, swipe right to convert to text
-/// - Visual feedback for all interactions
+/// A voice recording bottom sheet with gesture + explicit actions
 class VoiceRecordingSheet extends StatefulWidget {
   const VoiceRecordingSheet({super.key});
 
@@ -32,7 +27,7 @@ class VoiceRecordingSheet extends StatefulWidget {
 }
 
 class _VoiceRecordingSheetState extends State<VoiceRecordingSheet> {
-  static const double _swipeUpThreshold = 80.0; // pixels to swipe up to confirm
+  static const double _swipeUpThreshold = 80.0;
   static const int _waveBarCount = 20;
   static const double _minWaveHeight = 6.0;
   static const double _maxWaveHeight = 56.0;
@@ -92,7 +87,6 @@ class _VoiceRecordingSheetState extends State<VoiceRecordingSheet> {
     });
     _resetWaveState();
 
-    // Start 30-second timeout timer
     _timeoutTimer?.cancel();
     _timeoutTimer = Timer(const Duration(seconds: 30), () {
       if (mounted) {
@@ -105,7 +99,6 @@ class _VoiceRecordingSheetState extends State<VoiceRecordingSheet> {
       }
     });
 
-    // Start speech recognition
     await _speechToText.listen(
       localeId: 'zh_CN',
       listenFor: const Duration(seconds: 20),
@@ -150,7 +143,6 @@ class _VoiceRecordingSheetState extends State<VoiceRecordingSheet> {
       _maxSoundLevel = safeLevel + 1;
     } else {
       _smoothedSoundLevel = (_smoothedSoundLevel * 0.72) + (safeLevel * 0.28);
-      // Keep a moving floor/ceiling so early spikes won't flatten later waves.
       _minSoundLevel = math
           .min(
             _smoothedSoundLevel,
@@ -188,7 +180,6 @@ class _VoiceRecordingSheetState extends State<VoiceRecordingSheet> {
       final silenceDuration = DateTime.now().difference(_lastSoundLevelAt);
       final hasRecentSoundLevel = silenceDuration < _waveSilenceFallback;
       if (!hasRecentSoundLevel) {
-        // Keep a subtle breathing wave even when sound level callbacks are absent.
         final idleNormalized = 0.12 + (0.06 * (math.sin(_wavePhase) + 1) / 2);
         _targetWaveHeight =
             _minWaveHeight +
@@ -237,17 +228,27 @@ class _VoiceRecordingSheetState extends State<VoiceRecordingSheet> {
   bool get _isSwipedUp => _dragDistanceY < -_swipeUpThreshold;
 
   String _getStatusText() {
-    if (_isSwipedUp) return '松开 发送';
-    return '上滑确认发送';
+    if (_isSwipedUp) return '松开发送';
+    return '上滑发送，或使用下方按钮';
   }
 
-  Color _getAccentColor() {
-    if (_isSwipedUp) return const Color(0xFF34C759);
-    return Colors.white;
+  void _finish(VoiceRecordingAction action) {
+    Navigator.of(
+      context,
+    ).pop(VoiceRecordingResult(action: action, transcript: _transcript));
   }
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final voiceColors = theme.voiceOverlayColors;
+    final motion = theme.motionTokens;
+    final disableAnimations =
+        MediaQuery.maybeOf(context)?.disableAnimations ?? false;
+    final statusColor = _isSwipedUp
+        ? voiceColors.accent
+        : voiceColors.foreground;
+
     return GestureDetector(
       onVerticalDragStart: (details) {
         _baseY = details.globalPosition.dy;
@@ -257,22 +258,19 @@ class _VoiceRecordingSheetState extends State<VoiceRecordingSheet> {
           _dragDistanceY = details.globalPosition.dy - _baseY;
         });
       },
-      onVerticalDragEnd: (details) {
+      onVerticalDragEnd: (_) {
         final action = _isSwipedUp
             ? VoiceRecordingAction.proceed
             : VoiceRecordingAction.cancel;
         setState(() {
           _dragDistanceY = 0;
         });
-        Navigator.of(
-          context,
-        ).pop(VoiceRecordingResult(action: action, transcript: _transcript));
+        _finish(action);
       },
       child: ColoredBox(
-        color: Colors.black87,
+        color: voiceColors.background,
         child: Stack(
           children: [
-            // Swipe up indicator at top
             Positioned(
               top: 0,
               left: 0,
@@ -280,25 +278,26 @@ class _VoiceRecordingSheetState extends State<VoiceRecordingSheet> {
               child: SafeArea(
                 bottom: false,
                 child: AnimatedOpacity(
-                  duration: const Duration(milliseconds: 150),
-                  opacity: _isSwipedUp ? 1.0 : 0.3,
+                  duration: disableAnimations ? Duration.zero : motion.fast,
+                  opacity: _isSwipedUp ? 1.0 : 0.35,
                   child: Container(
-                    padding: const EdgeInsets.symmetric(vertical: 20),
+                    padding: const EdgeInsets.symmetric(
+                      vertical: WalnieTokens.spacingXl,
+                    ),
                     alignment: Alignment.center,
                     child: Column(
                       children: [
                         Icon(
                           Icons.keyboard_arrow_up,
-                          color: _getAccentColor(),
+                          color: statusColor,
                           size: 28,
                         ),
-                        const SizedBox(height: 4),
+                        const SizedBox(height: WalnieTokens.spacingXs),
                         Text(
                           _isSwipedUp ? '松开发送' : '上滑确认',
-                          style: TextStyle(
-                            color: _getAccentColor(),
-                            fontSize: 14,
-                            fontWeight: FontWeight.w500,
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            color: statusColor,
+                            fontWeight: FontWeight.w600,
                           ),
                         ),
                       ],
@@ -307,44 +306,51 @@ class _VoiceRecordingSheetState extends State<VoiceRecordingSheet> {
                 ),
               ),
             ),
-            // Center content
             Center(
               child: AnimatedContainer(
-                duration: const Duration(milliseconds: 50),
+                duration: disableAnimations ? Duration.zero : motion.fast,
+                curve: motion.enterCurve,
                 transform: Matrix4.translationValues(
                   0,
                   _dragDistanceY.clamp(-120.0, 0.0),
                   0,
                 ),
                 child: SingleChildScrollView(
-                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: WalnieTokens.spacingXl,
+                  ),
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      // Voice wave animation
                       Container(
-                        width: 200,
-                        height: 80,
+                        width: 220,
+                        height: 86,
                         decoration: BoxDecoration(
-                          color: _getAccentColor().withValues(alpha: 0.15),
-                          borderRadius: BorderRadius.circular(16),
+                          color: voiceColors.accentSoft,
+                          borderRadius: BorderRadius.circular(
+                            WalnieTokens.radiusLg,
+                          ),
                         ),
                         child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 8),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: WalnieTokens.spacingSm,
+                          ),
                           child: Row(
                             mainAxisAlignment: MainAxisAlignment.center,
                             crossAxisAlignment: CrossAxisAlignment.center,
                             children: List.generate(_waveBarCount, (index) {
                               final volume = _volumeLevels[index];
                               return AnimatedContainer(
-                                duration: const Duration(milliseconds: 50),
+                                duration: disableAnimations
+                                    ? Duration.zero
+                                    : motion.fast,
                                 margin: const EdgeInsets.symmetric(
                                   horizontal: 1.5,
                                 ),
                                 width: 5,
                                 height: volume.clamp(4.0, 60.0),
                                 decoration: BoxDecoration(
-                                  color: _getAccentColor(),
+                                  color: statusColor,
                                   borderRadius: BorderRadius.circular(2.5),
                                 ),
                               );
@@ -352,48 +358,118 @@ class _VoiceRecordingSheetState extends State<VoiceRecordingSheet> {
                           ),
                         ),
                       ),
-                      const SizedBox(height: 20),
-                      // Status text
+                      const SizedBox(height: WalnieTokens.spacingLg),
                       Text(
                         _getStatusText(),
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 15,
-                          fontWeight: FontWeight.w500,
+                        style: theme.textTheme.titleSmall?.copyWith(
+                          color: voiceColors.foreground,
                         ),
                       ),
-                      const SizedBox(height: 14),
-                      // Real-time transcript
-                      if (_transcript.isNotEmpty) ...[
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 20,
-                            vertical: 12,
-                          ),
-                          constraints: const BoxConstraints(maxWidth: 300),
-                          decoration: BoxDecoration(
-                            color: Colors.white.withValues(alpha: 0.1),
-                            borderRadius: BorderRadius.circular(14),
-                          ),
-                          child: Text(
-                            _transcript,
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 15,
-                              height: 1.3,
+                      const SizedBox(height: WalnieTokens.spacingMd),
+                      if (_transcript.isNotEmpty)
+                        Semantics(
+                          liveRegion: true,
+                          label: '实时转写内容 $_transcript',
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: WalnieTokens.spacingLg,
+                              vertical: WalnieTokens.spacingMd,
                             ),
-                            textAlign: TextAlign.center,
-                            maxLines: 3,
-                            overflow: TextOverflow.ellipsis,
+                            constraints: const BoxConstraints(maxWidth: 320),
+                            decoration: BoxDecoration(
+                              color: voiceColors.transcriptSurface,
+                              borderRadius: BorderRadius.circular(
+                                WalnieTokens.radiusMd,
+                              ),
+                            ),
+                            child: Text(
+                              _transcript,
+                              style: theme.textTheme.bodyLarge?.copyWith(
+                                color: voiceColors.foreground,
+                                height: 1.3,
+                              ),
+                              textAlign: TextAlign.center,
+                              maxLines: 3,
+                              overflow: TextOverflow.ellipsis,
+                            ),
                           ),
                         ),
-                      ],
+                      const SizedBox(height: WalnieTokens.spacingLg),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Semantics(
+                              button: true,
+                              label: '取消语音录制',
+                              child: OutlinedButton(
+                                onPressed: () =>
+                                    _finish(VoiceRecordingAction.cancel),
+                                style: OutlinedButton.styleFrom(
+                                  foregroundColor: voiceColors.foreground,
+                                  side: BorderSide(
+                                    color: voiceColors.foreground.withValues(
+                                      alpha: 0.4,
+                                    ),
+                                  ),
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: WalnieTokens.spacingMd,
+                                  ),
+                                ),
+                                child: const Text('取消'),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: WalnieTokens.spacingSm),
+                          Expanded(
+                            child: Semantics(
+                              button: true,
+                              label: '切换文字输入',
+                              child: OutlinedButton(
+                                onPressed: () =>
+                                    _finish(VoiceRecordingAction.toText),
+                                style: OutlinedButton.styleFrom(
+                                  foregroundColor: voiceColors.foreground,
+                                  side: BorderSide(
+                                    color: voiceColors.foreground.withValues(
+                                      alpha: 0.4,
+                                    ),
+                                  ),
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: WalnieTokens.spacingMd,
+                                  ),
+                                ),
+                                child: const Text('转文字'),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: WalnieTokens.spacingSm),
+                          Expanded(
+                            child: Semantics(
+                              button: true,
+                              label: '发送语音结果',
+                              child: FilledButton(
+                                onPressed: _transcript.trim().isEmpty
+                                    ? null
+                                    : () =>
+                                          _finish(VoiceRecordingAction.proceed),
+                                style: FilledButton.styleFrom(
+                                  backgroundColor: voiceColors.accent,
+                                  foregroundColor: voiceColors.background,
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: WalnieTokens.spacingMd,
+                                  ),
+                                ),
+                                child: const Text('发送'),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
                     ],
                   ),
                 ),
               ),
             ),
-            // Cancel button (bottom)
             Positioned(
               bottom: 0,
               left: 0,
@@ -401,30 +477,29 @@ class _VoiceRecordingSheetState extends State<VoiceRecordingSheet> {
               child: SafeArea(
                 top: false,
                 child: Padding(
-                  padding: const EdgeInsets.all(20),
-                  child: GestureDetector(
-                    onTap: () {
-                      Navigator.of(context).pop(
-                        VoiceRecordingResult(
-                          action: VoiceRecordingAction.cancel,
-                          transcript: _transcript,
+                  padding: const EdgeInsets.all(WalnieTokens.spacingXl),
+                  child: Semantics(
+                    button: true,
+                    label: '取消录音并返回',
+                    child: GestureDetector(
+                      onTap: () => _finish(VoiceRecordingAction.cancel),
+                      child: Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.symmetric(
+                          vertical: WalnieTokens.spacingMd,
                         ),
-                      );
-                    },
-                    child: Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.15),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: const Text(
-                        '取消',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 15,
-                          fontWeight: FontWeight.w500,
+                        decoration: BoxDecoration(
+                          color: voiceColors.cancelSurface,
+                          borderRadius: BorderRadius.circular(
+                            WalnieTokens.radiusMd,
+                          ),
+                        ),
+                        child: Text(
+                          '取消并返回',
+                          textAlign: TextAlign.center,
+                          style: theme.textTheme.titleSmall?.copyWith(
+                            color: voiceColors.foreground,
+                          ),
                         ),
                       ),
                     ),

@@ -9,8 +9,13 @@ class ParseVoiceCommandUseCase {
   Future<VoiceIntent> fromTranscript(
     String transcript, {
     VoiceParseProgressListener? onProgress,
+    VoiceParseCancellationToken? cancellationToken,
   }) {
-    return _voiceCommandService.parse(transcript, onProgress: onProgress);
+    return _voiceCommandService.parse(
+      transcript,
+      onProgress: onProgress,
+      cancellationToken: cancellationToken,
+    );
   }
 
   Future<String> transcribe() {

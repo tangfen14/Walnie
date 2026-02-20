@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:baby_tracker/domain/entities/voice_intent.dart';
+import 'package:baby_tracker/domain/services/voice_command_service.dart';
 import 'package:http/http.dart' as http;
 
 class LlmFallbackParser {
@@ -68,9 +69,16 @@ class LlmFallbackParser {
 
   final http.Client? _httpClient;
 
-  Future<VoiceIntent?> parse(String transcript) async {
+  Future<VoiceIntent?> parse(
+    String transcript, {
+    VoiceParseCancellationToken? cancellationToken,
+  }) async {
     if (_endpoint.isEmpty) {
       return null;
+    }
+
+    if (cancellationToken?.isCancelled == true) {
+      throw const VoiceParseCancelledException();
     }
 
     final rawTranscript = transcript.trim();
@@ -88,6 +96,14 @@ class LlmFallbackParser {
 
     final client = _httpClient ?? http.Client();
     final shouldCloseClient = _httpClient == null;
+    var cancelledByToken = false;
+
+    cancellationToken?.onCancel(() {
+      cancelledByToken = true;
+      if (shouldCloseClient) {
+        client.close();
+      }
+    });
 
     try {
       final response = await client
@@ -108,6 +124,10 @@ class LlmFallbackParser {
             }),
           )
           .timeout(Duration(milliseconds: _httpTimeoutMs));
+
+      if (cancelledByToken || cancellationToken?.isCancelled == true) {
+        throw const VoiceParseCancelledException();
+      }
 
       if (response.statusCode < 200 || response.statusCode >= 300) {
         return null;
@@ -140,9 +160,22 @@ class LlmFallbackParser {
       }
 
       return _parseLlmResponse(content, rawTranscript);
+    } on VoiceParseCancelledException {
+      rethrow;
     } on TimeoutException {
+      if (cancelledByToken || cancellationToken?.isCancelled == true) {
+        throw const VoiceParseCancelledException();
+      }
+      return null;
+    } on http.ClientException {
+      if (cancelledByToken || cancellationToken?.isCancelled == true) {
+        throw const VoiceParseCancelledException();
+      }
       return null;
     } catch (_) {
+      if (cancelledByToken || cancellationToken?.isCancelled == true) {
+        throw const VoiceParseCancelledException();
+      }
       return null;
     } finally {
       if (shouldCloseClient) {

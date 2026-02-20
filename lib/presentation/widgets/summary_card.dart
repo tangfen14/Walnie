@@ -1,3 +1,5 @@
+import 'package:baby_tracker/presentation/theme/walnie_theme_extensions.dart';
+import 'package:baby_tracker/presentation/theme/walnie_tokens.dart';
 import 'package:flutter/material.dart';
 
 class SummaryCard extends StatelessWidget {
@@ -6,88 +8,99 @@ class SummaryCard extends StatelessWidget {
     required this.title,
     required this.value,
     required this.icon,
+    required this.accentColor,
     this.onTap,
     this.selected = false,
-    this.expand = true,
-    this.compact = false,
-    this.width,
   });
 
   final String title;
   final String value;
   final IconData icon;
+  final Color accentColor;
   final VoidCallback? onTap;
   final bool selected;
-  final bool expand;
-  final bool compact;
-  final double? width;
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    final backgroundColor = selected
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final motion = theme.motionTokens;
+
+    final background = selected
         ? colorScheme.primaryContainer
-        : Colors.white;
-    final iconColor = colorScheme.primary;
+        : colorScheme.surface;
+    final borderColor = selected ? accentColor : colorScheme.outlineVariant;
+    final iconBackground = accentColor.withValues(
+      alpha: selected ? 0.24 : 0.16,
+    );
     final valueColor = selected
         ? colorScheme.onPrimaryContainer
-        : Theme.of(context).textTheme.titleLarge?.color;
+        : colorScheme.onSurface;
     final titleColor = selected
-        ? colorScheme.onPrimaryContainer.withValues(alpha: 0.82)
-        : Colors.black54;
+        ? colorScheme.onPrimaryContainer.withValues(alpha: 0.8)
+        : theme.textTheme.bodyMedium?.color;
 
-    final card = GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: EdgeInsets.all(compact ? 10 : 14),
-        decoration: BoxDecoration(
-          color: backgroundColor,
-          borderRadius: BorderRadius.circular(16),
-          border: selected
-              ? Border.all(color: colorScheme.primary, width: 1.2)
-              : null,
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.04),
-              blurRadius: 14,
-              offset: const Offset(0, 4),
-            ),
-          ],
+    return Semantics(
+      button: onTap != null,
+      label: '$title，$value',
+      child: Material(
+        color: background,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(WalnieTokens.radiusLg),
+          side: BorderSide(color: borderColor),
         ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Icon(icon, size: compact ? 18 : 20, color: iconColor),
-            SizedBox(height: compact ? 6 : 8),
-            Text(
-              value,
-              style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                fontWeight: FontWeight.w700,
-                fontSize: compact ? 18 : null,
-                color: valueColor,
-              ),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(WalnieTokens.radiusLg),
+          child: AnimatedContainer(
+            duration: motion.normal,
+            curve: motion.enterCurve,
+            padding: const EdgeInsets.all(WalnieTokens.spacingMd),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(WalnieTokens.radiusLg),
+              boxShadow: [
+                BoxShadow(
+                  color: theme.brightness == Brightness.light
+                      ? WalnieTokens.shadowColor.withValues(alpha: 0.08)
+                      : colorScheme.surface.withValues(alpha: 0),
+                  blurRadius: 16,
+                  offset: const Offset(0, 8),
+                ),
+              ],
             ),
-            const SizedBox(height: 2),
-            Text(
-              title,
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                fontSize: compact ? 14 : null,
-                color: titleColor,
-              ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  width: 30,
+                  height: 30,
+                  decoration: BoxDecoration(
+                    color: iconBackground,
+                    borderRadius: BorderRadius.circular(WalnieTokens.radiusSm),
+                  ),
+                  child: Icon(icon, size: 18, color: accentColor),
+                ),
+                const Spacer(),
+                Text(
+                  value,
+                  style: theme.textTheme.headlineSmall?.copyWith(
+                    color: valueColor,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: WalnieTokens.spacingXs),
+                Text(
+                  title,
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: titleColor,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
             ),
-          ],
+          ),
         ),
       ),
     );
-
-    if (width != null) {
-      return SizedBox(width: width, child: card);
-    }
-
-    if (!expand) {
-      return card;
-    }
-
-    return Expanded(child: card);
   }
 }
