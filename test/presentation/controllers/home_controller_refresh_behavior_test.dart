@@ -211,6 +211,33 @@ void main() {
     expect(after.isTimelineRefreshing, isFalse);
   });
 
+  test(
+    'background refresh keeps timeline visible without skeleton when configured',
+    () async {
+      final now = DateTime.now();
+      final repository = _FakeEventRepository(_seedEvents(now));
+      final reminderService = _FakeReminderService();
+      final container = buildContainer(
+        repository: repository,
+        reminderService: reminderService,
+      );
+      addTearDown(container.dispose);
+
+      await container.read(homeControllerProvider.future);
+      final notifier = container.read(homeControllerProvider.notifier);
+      repository.listBarrier = Completer<void>();
+
+      final refreshFuture = notifier.refreshData(showTimelineRefreshing: false);
+      await Future<void>.delayed(Duration.zero);
+      final during = container.read(homeControllerProvider).value!;
+
+      expect(during.isTimelineRefreshing, isFalse);
+
+      repository.listBarrier!.complete();
+      await refreshFuture;
+    },
+  );
+
   test('refreshData failure keeps old data and emits notice', () async {
     final now = DateTime.now();
     final repository = _FakeEventRepository(_seedEvents(now));
@@ -235,6 +262,32 @@ void main() {
     expect(current.isTimelineRefreshing, isFalse);
     expect(current.uiNotice, '刷新失败，请稍后重试');
     expect(current.uiNoticeVersion, initial.uiNoticeVersion + 1);
+  });
+
+  test('background refresh failure stays silent when configured', () async {
+    final now = DateTime.now();
+    final repository = _FakeEventRepository(_seedEvents(now));
+    final reminderService = _FakeReminderService();
+    final container = buildContainer(
+      repository: repository,
+      reminderService: reminderService,
+    );
+    addTearDown(container.dispose);
+
+    final initial = await container.read(homeControllerProvider.future);
+    final notifier = container.read(homeControllerProvider.notifier);
+    repository.throwOnList = true;
+
+    await notifier.refreshData(showFailureNotice: false);
+    final current = container.read(homeControllerProvider).value!;
+
+    expect(current.uiNotice, isNull);
+    expect(current.uiNoticeVersion, initial.uiNoticeVersion);
+    expect(current.isTimelineRefreshing, isFalse);
+    expect(
+      current.timeline.map((item) => item.id),
+      initial.timeline.map((item) => item.id),
+    );
   });
 
   test(

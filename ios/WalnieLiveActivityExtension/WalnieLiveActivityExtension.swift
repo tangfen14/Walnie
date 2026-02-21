@@ -155,9 +155,11 @@ private struct WalnieRelativeTimeView: View {
   let lastFeedAt: Date
 
   var body: some View {
-    Text(lastFeedAt, style: .relative)
-      .lineLimit(1)
-      .minimumScaleFactor(0.9)
+    TimelineView(.periodic(from: .now, by: 60)) { context in
+      Text(relativeTimeText(lastFeedAt: lastFeedAt, now: context.date))
+        .lineLimit(1)
+        .minimumScaleFactor(0.9)
+    }
   }
 }
 
@@ -229,4 +231,31 @@ private func formattedTime(lastFeedAt: Date) -> String {
   formatter.locale = Locale.current
   formatter.dateFormat = "HH:mm"
   return formatter.string(from: lastFeedAt)
+}
+
+private func relativeTimeText(lastFeedAt: Date, now: Date) -> String {
+  let seconds = max(0, Int(now.timeIntervalSince(lastFeedAt)))
+  let minutesCeil = max(1, (seconds + 59) / 60)
+
+  if isChineseLanguage() {
+    if minutesCeil < 60 {
+      return "\(minutesCeil)分钟之前"
+    }
+    let hours = max(1, seconds / 3600)
+    if hours < 24 {
+      return "\(hours)小时之前"
+    }
+    let days = max(1, seconds / 86_400)
+    return "\(days)天之前"
+  }
+
+  if minutesCeil < 60 {
+    return "\(minutesCeil) min ago"
+  }
+  let hours = max(1, seconds / 3600)
+  if hours < 24 {
+    return "\(hours) h ago"
+  }
+  let days = max(1, seconds / 86_400)
+  return "\(days) d ago"
 }

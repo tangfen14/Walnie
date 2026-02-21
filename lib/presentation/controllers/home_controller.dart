@@ -40,7 +40,11 @@ class HomeController extends AsyncNotifier<HomeState> {
   @override
   Future<HomeState> build() => _loadState();
 
-  Future<void> refreshData({String? refreshFailureNotice}) async {
+  Future<void> refreshData({
+    String? refreshFailureNotice,
+    bool showFailureNotice = true,
+    bool showTimelineRefreshing = true,
+  }) async {
     final previous = state.value;
     if (previous == null) {
       state = const AsyncLoading();
@@ -48,9 +52,15 @@ class HomeController extends AsyncNotifier<HomeState> {
       return;
     }
 
-    state = AsyncData(
-      previous.copyWith(isTimelineRefreshing: true, clearUiNotice: true),
-    );
+    if (showTimelineRefreshing) {
+      state = AsyncData(
+        previous.copyWith(isTimelineRefreshing: true, clearUiNotice: true),
+      );
+    } else {
+      state = AsyncData(
+        previous.copyWith(isTimelineRefreshing: false, clearUiNotice: true),
+      );
+    }
 
     try {
       final next = await _loadState();
@@ -58,11 +68,17 @@ class HomeController extends AsyncNotifier<HomeState> {
         next.copyWith(uiNoticeVersion: previous.uiNoticeVersion),
       );
     } catch (_) {
+      final notice = showFailureNotice
+          ? (refreshFailureNotice ?? '刷新失败，请稍后重试')
+          : null;
       state = AsyncData(
         previous.copyWith(
           isTimelineRefreshing: false,
-          uiNotice: refreshFailureNotice ?? '刷新失败，请稍后重试',
-          uiNoticeVersion: previous.uiNoticeVersion + 1,
+          uiNotice: notice,
+          clearUiNotice: !showFailureNotice,
+          uiNoticeVersion: showFailureNotice
+              ? previous.uiNoticeVersion + 1
+              : previous.uiNoticeVersion,
         ),
       );
     }

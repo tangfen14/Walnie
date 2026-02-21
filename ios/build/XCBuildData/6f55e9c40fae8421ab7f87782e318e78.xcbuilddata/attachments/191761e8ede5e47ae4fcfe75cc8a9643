@@ -1,0 +1,29 @@
+{
+  "" : {
+    "diagnostics" : "/Users/mac/cursorProjects/Walnie/ios/build/Runner.build/Debug-iphonesimulator/WalnieLiveActivityExtension.build/Objects-normal/arm64/WalnieLiveActivityExtension-primary.dia",
+    "emit-module-dependencies" : "/Users/mac/cursorProjects/Walnie/ios/build/Runner.build/Debug-iphonesimulator/WalnieLiveActivityExtension.build/Objects-normal/arm64/WalnieLiveActivityExtension-primary-emit-module.d",
+    "emit-module-diagnostics" : "/Users/mac/cursorProjects/Walnie/ios/build/Runner.build/Debug-iphonesimulator/WalnieLiveActivityExtension.build/Objects-normal/arm64/WalnieLiveActivityExtension-primary-emit-module.dia",
+    "pch" : "/Users/mac/cursorProjects/Walnie/ios/build/Runner.build/Debug-iphonesimulator/WalnieLiveActivityExtension.build/Objects-normal/arm64/WalnieLiveActivityExtension-primary-Bridging-header.pch",
+    "swift-dependencies" : "/Users/mac/cursorProjects/Walnie/ios/build/Runner.build/Debug-iphonesimulator/WalnieLiveActivityExtension.build/Objects-normal/arm64/WalnieLiveActivityExtension-primary.swiftdeps"
+  },
+  "/Users/mac/cursorProjects/Walnie/ios/WalnieLiveActivityExtension/WalnieLiveActivityExtension.swift" : {
+    "const-values" : "/Users/mac/cursorProjects/Walnie/ios/build/Runner.build/Debug-iphonesimulator/WalnieLiveActivityExtension.build/Objects-normal/arm64/WalnieLiveActivityExtension.swiftconstvalues",
+    "dependencies" : "/Users/mac/cursorProjects/Walnie/ios/build/Runner.build/Debug-iphonesimulator/WalnieLiveActivityExtension.build/Objects-normal/arm64/WalnieLiveActivityExtension.d",
+    "diagnostics" : "/Users/mac/cursorProjects/Walnie/ios/build/Runner.build/Debug-iphonesimulator/WalnieLiveActivityExtension.build/Objects-normal/arm64/WalnieLiveActivityExtension.dia",
+    "index-unit-output-path" : "/Runner.build/Debug-iphonesimulator/WalnieLiveActivityExtension.build/Objects-normal/arm64/WalnieLiveActivityExtension.o",
+    "llvm-bc" : "/Users/mac/cursorProjects/Walnie/ios/build/Runner.build/Debug-iphonesimulator/WalnieLiveActivityExtension.build/Objects-normal/arm64/WalnieLiveActivityExtension.bc",
+    "object" : "/Users/mac/cursorProjects/Walnie/ios/build/Runner.build/Debug-iphonesimulator/WalnieLiveActivityExtension.build/Objects-normal/arm64/WalnieLiveActivityExtension.o",
+    "swift-dependencies" : "/Users/mac/cursorProjects/Walnie/ios/build/Runner.build/Debug-iphonesimulator/WalnieLiveActivityExtension.build/Objects-normal/arm64/WalnieLiveActivityExtension.swiftdeps",
+    "swiftmodule" : "/Users/mac/cursorProjects/Walnie/ios/build/Runner.build/Debug-iphonesimulator/WalnieLiveActivityExtension.build/Objects-normal/arm64/WalnieLiveActivityExtension~partial.swiftmodule"
+  },
+  "/Users/mac/cursorProjects/Walnie/ios/build/Runner.build/Debug-iphonesimulator/WalnieLiveActivityExtension.build/DerivedSources/GeneratedAssetSymbols.swift" : {
+    "const-values" : "/Users/mac/cursorProjects/Walnie/ios/build/Runner.build/Debug-iphonesimulator/WalnieLiveActivityExtension.build/Objects-normal/arm64/GeneratedAssetSymbols.swiftconstvalues",
+    "dependencies" : "/Users/mac/cursorProjects/Walnie/ios/build/Runner.build/Debug-iphonesimulator/WalnieLiveActivityExtension.build/Objects-normal/arm64/GeneratedAssetSymbols.d",
+    "diagnostics" : "/Users/mac/cursorProjects/Walnie/ios/build/Runner.build/Debug-iphonesimulator/WalnieLiveActivityExtension.build/Objects-normal/arm64/GeneratedAssetSymbols.dia",
+    "index-unit-output-path" : "/Runner.build/Debug-iphonesimulator/WalnieLiveActivityExtension.build/Objects-normal/arm64/GeneratedAssetSymbols.o",
+    "llvm-bc" : "/Users/mac/cursorProjects/Walnie/ios/build/Runner.build/Debug-iphonesimulator/WalnieLiveActivityExtension.build/Objects-normal/arm64/GeneratedAssetSymbols.bc",
+    "object" : "/Users/mac/cursorProjects/Walnie/ios/build/Runner.build/Debug-iphonesimulator/WalnieLiveActivityExtension.build/Objects-normal/arm64/GeneratedAssetSymbols.o",
+    "swift-dependencies" : "/Users/mac/cursorProjects/Walnie/ios/build/Runner.build/Debug-iphonesimulator/WalnieLiveActivityExtension.build/Objects-normal/arm64/GeneratedAssetSymbols.swiftdeps",
+    "swiftmodule" : "/Users/mac/cursorProjects/Walnie/ios/build/Runner.build/Debug-iphonesimulator/WalnieLiveActivityExtension.build/Objects-normal/arm64/GeneratedAssetSymbols~partial.swiftmodule"
+  }
+}

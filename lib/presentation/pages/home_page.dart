@@ -32,9 +32,7 @@ class _HomePageState extends ConsumerState<HomePage>
     with WidgetsBindingObserver {
   final GlobalKey<_HomeContentState> _homeContentKey = GlobalKey();
   StreamSubscription<ExternalAction>? _externalActionSubscription;
-  Timer? _remoteAutoRefreshTimer;
   bool _autoRefreshRunning = false;
-  static const Duration _remoteAutoRefreshInterval = Duration(seconds: 45);
 
   @override
   void initState() {
@@ -45,14 +43,12 @@ class _HomePageState extends ConsumerState<HomePage>
     for (final pending in bus.takePending()) {
       _handleExternalAction(pending);
     }
-    _startRemoteAutoRefresh();
     unawaited(_refreshFromRemoteIfNeeded());
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    _remoteAutoRefreshTimer?.cancel();
     _externalActionSubscription?.cancel();
     super.dispose();
   }
@@ -232,18 +228,6 @@ class _HomePageState extends ConsumerState<HomePage>
     }
   }
 
-  void _startRemoteAutoRefresh() {
-    final env = ref.read(appEnvironmentProvider);
-    if (!env.useRemoteBackend) {
-      return;
-    }
-
-    _remoteAutoRefreshTimer?.cancel();
-    _remoteAutoRefreshTimer = Timer.periodic(_remoteAutoRefreshInterval, (_) {
-      unawaited(_refreshFromRemoteIfNeeded());
-    });
-  }
-
   Future<void> _refreshFromRemoteIfNeeded() async {
     if (!mounted || _autoRefreshRunning) {
       return;
@@ -256,7 +240,9 @@ class _HomePageState extends ConsumerState<HomePage>
 
     _autoRefreshRunning = true;
     try {
-      await ref.read(homeControllerProvider.notifier).refreshData();
+      await ref
+          .read(homeControllerProvider.notifier)
+          .refreshData(showFailureNotice: false, showTimelineRefreshing: false);
     } catch (_) {
       // Keep silent for background auto-refresh to avoid toast noise.
     } finally {

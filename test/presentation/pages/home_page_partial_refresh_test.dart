@@ -70,9 +70,15 @@ class _FakeHomeController extends HomeController {
   }
 
   @override
-  Future<void> refreshData({String? refreshFailureNotice}) async {
+  Future<void> refreshData({
+    String? refreshFailureNotice,
+    bool showFailureNotice = true,
+    bool showTimelineRefreshing = true,
+  }) async {
     final current = state.value!;
-    state = AsyncData(current.copyWith(isTimelineRefreshing: true));
+    state = AsyncData(
+      current.copyWith(isTimelineRefreshing: showTimelineRefreshing),
+    );
   }
 
   @override
