@@ -102,6 +102,17 @@ class $EventRecordsTable extends EventRecords
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _eventMetaMeta = const VerificationMeta(
+    'eventMeta',
+  );
+  @override
+  late final GeneratedColumn<String> eventMeta = GeneratedColumn<String>(
+    'event_meta',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _createdAtMeta = const VerificationMeta(
     'createdAt',
   );
@@ -135,6 +146,7 @@ class $EventRecordsTable extends EventRecords
     pumpStartAt,
     pumpEndAt,
     note,
+    eventMeta,
     createdAt,
     updatedAt,
   ];
@@ -213,6 +225,12 @@ class $EventRecordsTable extends EventRecords
         note.isAcceptableOrUnknown(data['note']!, _noteMeta),
       );
     }
+    if (data.containsKey('event_meta')) {
+      context.handle(
+        _eventMetaMeta,
+        eventMeta.isAcceptableOrUnknown(data['event_meta']!, _eventMetaMeta),
+      );
+    }
     if (data.containsKey('created_at')) {
       context.handle(
         _createdAtMeta,
@@ -274,6 +292,10 @@ class $EventRecordsTable extends EventRecords
         DriftSqlType.string,
         data['${effectivePrefix}note'],
       ),
+      eventMeta: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}event_meta'],
+      ),
       createdAt: attachedDatabase.typeMapping.read(
         DriftSqlType.dateTime,
         data['${effectivePrefix}created_at'],
@@ -301,6 +323,7 @@ class EventRecord extends DataClass implements Insertable<EventRecord> {
   final DateTime? pumpStartAt;
   final DateTime? pumpEndAt;
   final String? note;
+  final String? eventMeta;
   final DateTime createdAt;
   final DateTime updatedAt;
   const EventRecord({
@@ -313,6 +336,7 @@ class EventRecord extends DataClass implements Insertable<EventRecord> {
     this.pumpStartAt,
     this.pumpEndAt,
     this.note,
+    this.eventMeta,
     required this.createdAt,
     required this.updatedAt,
   });
@@ -340,6 +364,9 @@ class EventRecord extends DataClass implements Insertable<EventRecord> {
     if (!nullToAbsent || note != null) {
       map['note'] = Variable<String>(note);
     }
+    if (!nullToAbsent || eventMeta != null) {
+      map['event_meta'] = Variable<String>(eventMeta);
+    }
     map['created_at'] = Variable<DateTime>(createdAt);
     map['updated_at'] = Variable<DateTime>(updatedAt);
     return map;
@@ -366,6 +393,9 @@ class EventRecord extends DataClass implements Insertable<EventRecord> {
           ? const Value.absent()
           : Value(pumpEndAt),
       note: note == null && nullToAbsent ? const Value.absent() : Value(note),
+      eventMeta: eventMeta == null && nullToAbsent
+          ? const Value.absent()
+          : Value(eventMeta),
       createdAt: Value(createdAt),
       updatedAt: Value(updatedAt),
     );
@@ -386,6 +416,7 @@ class EventRecord extends DataClass implements Insertable<EventRecord> {
       pumpStartAt: serializer.fromJson<DateTime?>(json['pumpStartAt']),
       pumpEndAt: serializer.fromJson<DateTime?>(json['pumpEndAt']),
       note: serializer.fromJson<String?>(json['note']),
+      eventMeta: serializer.fromJson<String?>(json['eventMeta']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
       updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
     );
@@ -403,6 +434,7 @@ class EventRecord extends DataClass implements Insertable<EventRecord> {
       'pumpStartAt': serializer.toJson<DateTime?>(pumpStartAt),
       'pumpEndAt': serializer.toJson<DateTime?>(pumpEndAt),
       'note': serializer.toJson<String?>(note),
+      'eventMeta': serializer.toJson<String?>(eventMeta),
       'createdAt': serializer.toJson<DateTime>(createdAt),
       'updatedAt': serializer.toJson<DateTime>(updatedAt),
     };
@@ -418,6 +450,7 @@ class EventRecord extends DataClass implements Insertable<EventRecord> {
     Value<DateTime?> pumpStartAt = const Value.absent(),
     Value<DateTime?> pumpEndAt = const Value.absent(),
     Value<String?> note = const Value.absent(),
+    Value<String?> eventMeta = const Value.absent(),
     DateTime? createdAt,
     DateTime? updatedAt,
   }) => EventRecord(
@@ -430,6 +463,7 @@ class EventRecord extends DataClass implements Insertable<EventRecord> {
     pumpStartAt: pumpStartAt.present ? pumpStartAt.value : this.pumpStartAt,
     pumpEndAt: pumpEndAt.present ? pumpEndAt.value : this.pumpEndAt,
     note: note.present ? note.value : this.note,
+    eventMeta: eventMeta.present ? eventMeta.value : this.eventMeta,
     createdAt: createdAt ?? this.createdAt,
     updatedAt: updatedAt ?? this.updatedAt,
   );
@@ -452,6 +486,7 @@ class EventRecord extends DataClass implements Insertable<EventRecord> {
           : this.pumpStartAt,
       pumpEndAt: data.pumpEndAt.present ? data.pumpEndAt.value : this.pumpEndAt,
       note: data.note.present ? data.note.value : this.note,
+      eventMeta: data.eventMeta.present ? data.eventMeta.value : this.eventMeta,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
     );
@@ -469,6 +504,7 @@ class EventRecord extends DataClass implements Insertable<EventRecord> {
           ..write('pumpStartAt: $pumpStartAt, ')
           ..write('pumpEndAt: $pumpEndAt, ')
           ..write('note: $note, ')
+          ..write('eventMeta: $eventMeta, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt')
           ..write(')'))
@@ -486,6 +522,7 @@ class EventRecord extends DataClass implements Insertable<EventRecord> {
     pumpStartAt,
     pumpEndAt,
     note,
+    eventMeta,
     createdAt,
     updatedAt,
   );
@@ -502,6 +539,7 @@ class EventRecord extends DataClass implements Insertable<EventRecord> {
           other.pumpStartAt == this.pumpStartAt &&
           other.pumpEndAt == this.pumpEndAt &&
           other.note == this.note &&
+          other.eventMeta == this.eventMeta &&
           other.createdAt == this.createdAt &&
           other.updatedAt == this.updatedAt);
 }
@@ -516,6 +554,7 @@ class EventRecordsCompanion extends UpdateCompanion<EventRecord> {
   final Value<DateTime?> pumpStartAt;
   final Value<DateTime?> pumpEndAt;
   final Value<String?> note;
+  final Value<String?> eventMeta;
   final Value<DateTime> createdAt;
   final Value<DateTime> updatedAt;
   final Value<int> rowid;
@@ -529,6 +568,7 @@ class EventRecordsCompanion extends UpdateCompanion<EventRecord> {
     this.pumpStartAt = const Value.absent(),
     this.pumpEndAt = const Value.absent(),
     this.note = const Value.absent(),
+    this.eventMeta = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
     this.rowid = const Value.absent(),
@@ -543,6 +583,7 @@ class EventRecordsCompanion extends UpdateCompanion<EventRecord> {
     this.pumpStartAt = const Value.absent(),
     this.pumpEndAt = const Value.absent(),
     this.note = const Value.absent(),
+    this.eventMeta = const Value.absent(),
     required DateTime createdAt,
     required DateTime updatedAt,
     this.rowid = const Value.absent(),
@@ -561,6 +602,7 @@ class EventRecordsCompanion extends UpdateCompanion<EventRecord> {
     Expression<DateTime>? pumpStartAt,
     Expression<DateTime>? pumpEndAt,
     Expression<String>? note,
+    Expression<String>? eventMeta,
     Expression<DateTime>? createdAt,
     Expression<DateTime>? updatedAt,
     Expression<int>? rowid,
@@ -575,6 +617,7 @@ class EventRecordsCompanion extends UpdateCompanion<EventRecord> {
       if (pumpStartAt != null) 'pump_start_at': pumpStartAt,
       if (pumpEndAt != null) 'pump_end_at': pumpEndAt,
       if (note != null) 'note': note,
+      if (eventMeta != null) 'event_meta': eventMeta,
       if (createdAt != null) 'created_at': createdAt,
       if (updatedAt != null) 'updated_at': updatedAt,
       if (rowid != null) 'rowid': rowid,
@@ -591,6 +634,7 @@ class EventRecordsCompanion extends UpdateCompanion<EventRecord> {
     Value<DateTime?>? pumpStartAt,
     Value<DateTime?>? pumpEndAt,
     Value<String?>? note,
+    Value<String?>? eventMeta,
     Value<DateTime>? createdAt,
     Value<DateTime>? updatedAt,
     Value<int>? rowid,
@@ -605,6 +649,7 @@ class EventRecordsCompanion extends UpdateCompanion<EventRecord> {
       pumpStartAt: pumpStartAt ?? this.pumpStartAt,
       pumpEndAt: pumpEndAt ?? this.pumpEndAt,
       note: note ?? this.note,
+      eventMeta: eventMeta ?? this.eventMeta,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
       rowid: rowid ?? this.rowid,
@@ -641,6 +686,9 @@ class EventRecordsCompanion extends UpdateCompanion<EventRecord> {
     if (note.present) {
       map['note'] = Variable<String>(note.value);
     }
+    if (eventMeta.present) {
+      map['event_meta'] = Variable<String>(eventMeta.value);
+    }
     if (createdAt.present) {
       map['created_at'] = Variable<DateTime>(createdAt.value);
     }
@@ -665,6 +713,7 @@ class EventRecordsCompanion extends UpdateCompanion<EventRecord> {
           ..write('pumpStartAt: $pumpStartAt, ')
           ..write('pumpEndAt: $pumpEndAt, ')
           ..write('note: $note, ')
+          ..write('eventMeta: $eventMeta, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt, ')
           ..write('rowid: $rowid')
@@ -695,6 +744,7 @@ typedef $$EventRecordsTableCreateCompanionBuilder =
       Value<DateTime?> pumpStartAt,
       Value<DateTime?> pumpEndAt,
       Value<String?> note,
+      Value<String?> eventMeta,
       required DateTime createdAt,
       required DateTime updatedAt,
       Value<int> rowid,
@@ -710,6 +760,7 @@ typedef $$EventRecordsTableUpdateCompanionBuilder =
       Value<DateTime?> pumpStartAt,
       Value<DateTime?> pumpEndAt,
       Value<String?> note,
+      Value<String?> eventMeta,
       Value<DateTime> createdAt,
       Value<DateTime> updatedAt,
       Value<int> rowid,
@@ -766,6 +817,11 @@ class $$EventRecordsTableFilterComposer
 
   ColumnFilters<String> get note => $composableBuilder(
     column: $table.note,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get eventMeta => $composableBuilder(
+    column: $table.eventMeta,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -834,6 +890,11 @@ class $$EventRecordsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get eventMeta => $composableBuilder(
+    column: $table.eventMeta,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<DateTime> get createdAt => $composableBuilder(
     column: $table.createdAt,
     builder: (column) => ColumnOrderings(column),
@@ -889,6 +950,9 @@ class $$EventRecordsTableAnnotationComposer
   GeneratedColumn<String> get note =>
       $composableBuilder(column: $table.note, builder: (column) => column);
 
+  GeneratedColumn<String> get eventMeta =>
+      $composableBuilder(column: $table.eventMeta, builder: (column) => column);
+
   GeneratedColumn<DateTime> get createdAt =>
       $composableBuilder(column: $table.createdAt, builder: (column) => column);
 
@@ -936,6 +1000,7 @@ class $$EventRecordsTableTableManager
                 Value<DateTime?> pumpStartAt = const Value.absent(),
                 Value<DateTime?> pumpEndAt = const Value.absent(),
                 Value<String?> note = const Value.absent(),
+                Value<String?> eventMeta = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<DateTime> updatedAt = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
@@ -949,6 +1014,7 @@ class $$EventRecordsTableTableManager
                 pumpStartAt: pumpStartAt,
                 pumpEndAt: pumpEndAt,
                 note: note,
+                eventMeta: eventMeta,
                 createdAt: createdAt,
                 updatedAt: updatedAt,
                 rowid: rowid,
@@ -964,6 +1030,7 @@ class $$EventRecordsTableTableManager
                 Value<DateTime?> pumpStartAt = const Value.absent(),
                 Value<DateTime?> pumpEndAt = const Value.absent(),
                 Value<String?> note = const Value.absent(),
+                Value<String?> eventMeta = const Value.absent(),
                 required DateTime createdAt,
                 required DateTime updatedAt,
                 Value<int> rowid = const Value.absent(),
@@ -977,6 +1044,7 @@ class $$EventRecordsTableTableManager
                 pumpStartAt: pumpStartAt,
                 pumpEndAt: pumpEndAt,
                 note: note,
+                eventMeta: eventMeta,
                 createdAt: createdAt,
                 updatedAt: updatedAt,
                 rowid: rowid,

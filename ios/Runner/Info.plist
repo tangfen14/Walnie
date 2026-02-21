@@ -22,6 +22,17 @@
 	<string>$(FLUTTER_BUILD_NAME)</string>
 	<key>CFBundleSignature</key>
 	<string>????</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>com.cc.walnie.deeplink</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>walnie</string>
+			</array>
+		</dict>
+	</array>
 	<key>CFBundleVersion</key>
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
 	<key>LSRequiresIPhoneOS</key>
@@ -46,10 +57,18 @@
 			</dict>
 		</dict>
 	</dict>
+	<key>NSCameraUsageDescription</key>
+	<string>用于给换尿布与便便记录拍照留档。</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>用于语音记录宝宝吃奶、便便、尿尿事件。</string>
+	<string>用于语音记录宝宝喂奶、便便、尿尿事件。</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>用于保存拍摄照片到系统相册。</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>用于从相册选择图片并关联到事件记录。</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
 	<string>用于将你的语音指令转成文字并完成记录确认。</string>
+	<key>NSSupportsLiveActivities</key>
+	<true/>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

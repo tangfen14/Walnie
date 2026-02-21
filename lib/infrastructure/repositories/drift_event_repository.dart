@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:baby_tracker/domain/entities/baby_event.dart';
 import 'package:baby_tracker/domain/repositories/event_repository.dart';
 import 'package:baby_tracker/infrastructure/database/app_database.dart';
@@ -23,6 +25,11 @@ class DriftEventRepository implements EventRepository {
             pumpStartAt: Value(event.pumpStartAt),
             pumpEndAt: Value(event.pumpEndAt),
             note: Value(event.note),
+            eventMeta: Value(
+              event.eventMeta == null
+                  ? null
+                  : jsonEncode(event.eventMeta!.toJson()),
+            ),
             createdAt: event.createdAt,
             updatedAt: event.updatedAt,
           ),
@@ -65,6 +72,19 @@ class DriftEventRepository implements EventRepository {
   }
 
   BabyEvent _toDomain(EventRecord row) {
+    EventMeta? eventMeta;
+    final rawEventMeta = row.eventMeta;
+    if (rawEventMeta != null && rawEventMeta.trim().isNotEmpty) {
+      try {
+        final decoded = jsonDecode(rawEventMeta);
+        if (decoded is Map<String, dynamic>) {
+          eventMeta = EventMeta.fromJson(decoded);
+        }
+      } catch (_) {
+        eventMeta = null;
+      }
+    }
+
     return BabyEvent(
       id: row.id,
       type: EventTypeX.fromDb(row.type),
@@ -75,6 +95,7 @@ class DriftEventRepository implements EventRepository {
       pumpStartAt: row.pumpStartAt,
       pumpEndAt: row.pumpEndAt,
       note: row.note,
+      eventMeta: eventMeta,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
     );

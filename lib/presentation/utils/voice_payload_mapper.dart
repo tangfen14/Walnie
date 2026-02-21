@@ -31,16 +31,46 @@ BabyEvent eventFromVoiceIntent(VoiceIntent intent) {
   final amountMl = _toInt(payload['amountMl']);
   final pumpStartAt = _toDateTime(payload['pumpStartAt']);
   final pumpEndAt = _toDateTime(payload['pumpEndAt']);
+  final rawEventType = eventType ?? EventType.feed;
+  final resolvedEventType =
+      rawEventType == EventType.poop || rawEventType == EventType.pee
+      ? EventType.diaper
+      : rawEventType;
+  final resolvedFeedMethod = resolvedEventType == EventType.feed
+      ? (feedMethod ?? FeedMethod.bottleBreastmilk)
+      : feedMethod;
+
+  final diaperStatusRaw = payload['diaperStatus'] as String?;
+  final resolvedStatus =
+      DiaperStatusX.tryFromDb(diaperStatusRaw) ??
+      (rawEventType == EventType.poop
+          ? DiaperStatus.poop
+          : (rawEventType == EventType.pee
+                ? DiaperStatus.pee
+                : (resolvedEventType == EventType.diaper
+                      ? DiaperStatus.mixed
+                      : null)));
+  final changedDiaperRaw = payload['changedDiaper'];
+  final changedDiaper = changedDiaperRaw is bool ? changedDiaperRaw : null;
 
   return BabyEvent(
-    type: eventType ?? EventType.feed,
+    type: resolvedEventType,
     occurredAt: occurredAt ?? DateTime.now(),
-    feedMethod: feedMethod,
+    feedMethod: resolvedFeedMethod,
     durationMin: durationMin,
     amountMl: amountMl,
     pumpStartAt: pumpStartAt,
     pumpEndAt: pumpEndAt,
     note: payload['note'] as String?,
+    eventMeta: resolvedEventType == EventType.diaper
+        ? EventMeta(
+            schemaVersion: 1,
+            status: resolvedStatus ?? DiaperStatus.mixed,
+            changedDiaper: changedDiaper ?? true,
+            hasRash: false,
+            attachments: const [],
+          )
+        : null,
   );
 }
 

@@ -5,20 +5,29 @@ import 'package:baby_tracker/application/usecases/get_timeline_use_case.dart';
 import 'package:baby_tracker/application/usecases/get_today_summary_use_case.dart';
 import 'package:baby_tracker/application/usecases/parse_voice_command_use_case.dart';
 import 'package:baby_tracker/application/usecases/update_reminder_policy_use_case.dart';
+import 'package:baby_tracker/application/services/external_action_bus.dart';
+import 'package:baby_tracker/domain/services/feed_reminder_surface_service.dart';
 import 'package:baby_tracker/domain/repositories/event_repository.dart';
+import 'package:baby_tracker/domain/repositories/reminder_policy_repository.dart';
+import 'package:baby_tracker/domain/repositories/voice_normalization_config_repository.dart';
 import 'package:baby_tracker/domain/services/reminder_service.dart';
 import 'package:baby_tracker/domain/services/voice_command_service.dart';
 import 'package:baby_tracker/infrastructure/config/app_environment.dart';
 import 'package:baby_tracker/infrastructure/database/app_database.dart';
+import 'package:baby_tracker/infrastructure/reminder/live_activity_feed_reminder_surface_service.dart';
 import 'package:baby_tracker/infrastructure/reminder/local_notification_service.dart';
 import 'package:baby_tracker/infrastructure/repositories/api_event_repository.dart';
+import 'package:baby_tracker/infrastructure/repositories/api_reminder_policy_repository.dart';
 import 'package:baby_tracker/infrastructure/reminder/reminder_service_impl.dart';
 import 'package:baby_tracker/infrastructure/repositories/drift_event_repository.dart';
 import 'package:baby_tracker/infrastructure/voice/llm_fallback_parser.dart';
 import 'package:baby_tracker/infrastructure/voice/rule_based_intent_parser.dart';
+import 'package:baby_tracker/infrastructure/voice/voice_normalization_config_repository_impl.dart';
 import 'package:baby_tracker/infrastructure/voice/voice_command_service_impl.dart';
+import 'package:baby_tracker/infrastructure/voice/voice_text_normalizer.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http/http.dart' as http;
+import 'package:live_activities/live_activities.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:speech_to_text/speech_to_text.dart';
 
@@ -48,6 +57,25 @@ final localNotificationServiceProvider = Provider<LocalNotificationService>((
   );
 });
 
+final externalActionBusProvider = Provider<ExternalActionBus>((ref) {
+  final bus = ExternalActionBus();
+  ref.onDispose(bus.close);
+  return bus;
+});
+
+final liveActivitiesProvider = Provider<LiveActivities>((ref) {
+  return LiveActivities();
+});
+
+final feedReminderSurfaceServiceProvider = Provider<FeedReminderSurfaceService>(
+  (ref) {
+    return LiveActivityFeedReminderSurfaceService(
+      liveActivities: ref.watch(liveActivitiesProvider),
+      appGroupId: 'group.com.wang.walnie.shared',
+    );
+  },
+);
+
 final speechToTextProvider = Provider<SpeechToText>((ref) {
   return SpeechToText();
 });
@@ -59,6 +87,20 @@ final ruleBasedIntentParserProvider = Provider<RuleBasedIntentParser>((ref) {
 final llmFallbackParserProvider = Provider<LlmFallbackParser>((ref) {
   return const LlmFallbackParser();
 });
+
+final voiceTextNormalizerProvider = Provider<VoiceTextNormalizer>((ref) {
+  return const VoiceTextNormalizer();
+});
+
+final voiceNormalizationConfigRepositoryProvider =
+    Provider<VoiceNormalizationConfigRepository>((ref) {
+      final env = ref.watch(appEnvironmentProvider);
+      return VoiceNormalizationConfigRepositoryImpl(
+        httpClient: ref.watch(httpClientProvider),
+        sharedPreferences: ref.watch(sharedPreferencesProvider),
+        baseUrl: env.normalizedVoiceNormalizationApiBaseUrl,
+      );
+    });
 
 final eventRepositoryProvider = Provider<EventRepository>((ref) {
   final env = ref.watch(appEnvironmentProvider);
@@ -73,11 +115,27 @@ final eventRepositoryProvider = Provider<EventRepository>((ref) {
   return DriftEventRepository(database);
 });
 
+final reminderPolicyRepositoryProvider = Provider<ReminderPolicyRepository?>((
+  ref,
+) {
+  final env = ref.watch(appEnvironmentProvider);
+  if (!env.useRemoteBackend) {
+    return null;
+  }
+
+  return ApiReminderPolicyRepository(
+    baseUrl: env.normalizedEventApiBaseUrl,
+    httpClient: ref.watch(httpClientProvider),
+  );
+});
+
 final reminderServiceProvider = Provider<ReminderService>((ref) {
   return ReminderServiceImpl(
     eventRepository: ref.watch(eventRepositoryProvider),
     sharedPreferences: ref.watch(sharedPreferencesProvider),
     notificationService: ref.watch(localNotificationServiceProvider),
+    reminderSurfaceService: ref.watch(feedReminderSurfaceServiceProvider),
+    reminderPolicyRepository: ref.watch(reminderPolicyRepositoryProvider),
   );
 });
 
@@ -86,6 +144,10 @@ final voiceCommandServiceProvider = Provider<VoiceCommandService>((ref) {
     speechToText: ref.watch(speechToTextProvider),
     ruleBasedIntentParser: ref.watch(ruleBasedIntentParserProvider),
     llmFallbackParser: ref.watch(llmFallbackParserProvider),
+    voiceNormalizationConfigRepository: ref.watch(
+      voiceNormalizationConfigRepositoryProvider,
+    ),
+    voiceTextNormalizer: ref.watch(voiceTextNormalizerProvider),
   );
 });
 

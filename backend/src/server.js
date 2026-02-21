@@ -25,6 +25,8 @@ const FEED_METHODS = new Set([
   'bottleBreastmilk',
   'mixed',
 ]);
+const DIAPER_STATUS = new Set(['poop', 'pee', 'mixed']);
+const ATTACHMENT_MIME_TYPES = new Set(['image/jpeg', 'image/png']);
 
 function makeHttpError(statusCode, message) {
   const error = new Error(message);
@@ -66,6 +68,18 @@ function parseOptionalString(value, fieldName) {
   return value;
 }
 
+function parseOptionalBool(value, fieldName) {
+  if (value == null) {
+    return null;
+  }
+
+  if (typeof value !== 'boolean') {
+    throw makeHttpError(400, `${fieldName} must be a boolean`);
+  }
+
+  return value;
+}
+
 function parseEventType(value) {
   if (typeof value !== 'string' || !EVENT_TYPES.has(value)) {
     throw makeHttpError(400, 'type is invalid');
@@ -85,6 +99,149 @@ function parseOptionalFeedMethod(value) {
   return value;
 }
 
+function normalizeAttachment(raw, index) {
+  if (raw == null || typeof raw !== 'object' || Array.isArray(raw)) {
+    throw makeHttpError(400, `eventMeta.attachments[${index}] must be an object`);
+  }
+
+  const id = parseOptionalString(raw.id, `eventMeta.attachments[${index}].id`);
+  const mimeType = parseOptionalString(
+    raw.mimeType,
+    `eventMeta.attachments[${index}].mimeType`,
+  );
+  const base64 = parseOptionalString(
+    raw.base64,
+    `eventMeta.attachments[${index}].base64`,
+  );
+  const createdAtRaw = parseOptionalString(
+    raw.createdAt,
+    `eventMeta.attachments[${index}].createdAt`,
+  );
+
+  if (id == null || id.trim() === '') {
+    throw makeHttpError(400, `eventMeta.attachments[${index}].id is required`);
+  }
+  if (mimeType == null || !ATTACHMENT_MIME_TYPES.has(mimeType)) {
+    throw makeHttpError(
+      400,
+      `eventMeta.attachments[${index}].mimeType must be image/jpeg or image/png`,
+    );
+  }
+  if (base64 == null || base64.trim() === '') {
+    throw makeHttpError(400, `eventMeta.attachments[${index}].base64 is required`);
+  }
+  if (createdAtRaw == null) {
+    throw makeHttpError(
+      400,
+      `eventMeta.attachments[${index}].createdAt is required`,
+    );
+  }
+
+  try {
+    parseIsoDate(createdAtRaw, `eventMeta.attachments[${index}].createdAt`);
+  } catch (error) {
+    throw makeHttpError(400, error.message);
+  }
+
+  return {
+    id,
+    mimeType,
+    base64,
+    createdAt: createdAtRaw,
+  };
+}
+
+function parseEventMeta(rawEventMeta, type) {
+  const isDiaperLike = type === 'diaper' || type === 'poop' || type === 'pee';
+  if (rawEventMeta == null) {
+    if (!isDiaperLike) {
+      return null;
+    }
+    const status = type === 'poop' ? 'poop' : (type === 'pee' ? 'pee' : 'mixed');
+    return {
+      schemaVersion: 1,
+      status,
+      changedDiaper: true,
+      hasRash: false,
+      attachments: [],
+    };
+  }
+
+  if (
+    rawEventMeta == null ||
+    typeof rawEventMeta !== 'object' ||
+    Array.isArray(rawEventMeta)
+  ) {
+    throw makeHttpError(400, 'eventMeta must be an object');
+  }
+
+  const schemaVersionRaw = rawEventMeta.schemaVersion;
+  const schemaVersion = schemaVersionRaw == null ? 1 : schemaVersionRaw;
+  if (!Number.isInteger(schemaVersion) || schemaVersion <= 0) {
+    throw makeHttpError(400, 'eventMeta.schemaVersion must be a positive integer');
+  }
+
+  const statusRaw = parseOptionalString(rawEventMeta.status, 'eventMeta.status');
+  const changedDiaper = parseOptionalBool(
+    rawEventMeta.changedDiaper,
+    'eventMeta.changedDiaper',
+  );
+  const hasRash = parseOptionalBool(rawEventMeta.hasRash, 'eventMeta.hasRash');
+  const pumpLeftMl = parseOptionalNonNegativeInt(
+    rawEventMeta.pumpLeftMl,
+    'eventMeta.pumpLeftMl',
+  );
+  const pumpRightMl = parseOptionalNonNegativeInt(
+    rawEventMeta.pumpRightMl,
+    'eventMeta.pumpRightMl',
+  );
+
+  if (isDiaperLike && statusRaw == null) {
+    throw makeHttpError(400, 'eventMeta.status is required for diaper-like events');
+  }
+
+  if (isDiaperLike && changedDiaper == null) {
+    throw makeHttpError(400, 'eventMeta.changedDiaper is required for diaper-like events');
+  }
+
+  if (statusRaw != null && !DIAPER_STATUS.has(statusRaw)) {
+    throw makeHttpError(400, 'eventMeta.status is invalid');
+  }
+
+  if (type !== 'diaper' && hasRash != null) {
+    throw makeHttpError(400, 'eventMeta.hasRash is only allowed for diaper events');
+  }
+  if (type !== 'pump' && (pumpLeftMl != null || pumpRightMl != null)) {
+    throw makeHttpError(
+      400,
+      'eventMeta.pumpLeftMl and eventMeta.pumpRightMl are only allowed for pump events',
+    );
+  }
+
+  const attachmentsRaw = rawEventMeta.attachments;
+  if (attachmentsRaw != null && !Array.isArray(attachmentsRaw)) {
+    throw makeHttpError(400, 'eventMeta.attachments must be an array');
+  }
+
+  const attachments = (attachmentsRaw ?? []).map((item, index) =>
+    normalizeAttachment(item, index),
+  );
+
+  if (attachments.length > 3) {
+    throw makeHttpError(400, 'eventMeta.attachments cannot exceed 3 items');
+  }
+
+  return {
+    schemaVersion,
+    status: statusRaw,
+    changedDiaper,
+    hasRash,
+    pumpLeftMl,
+    pumpRightMl,
+    attachments,
+  };
+}
+
 function normalizeEventPayload(body) {
   if (body == null || typeof body !== 'object') {
     throw makeHttpError(400, 'request body must be a JSON object');
@@ -95,7 +252,8 @@ function normalizeEventPayload(body) {
     throw makeHttpError(400, 'id is required');
   }
 
-  const type = parseEventType(body.type);
+  const sourceType = parseEventType(body.type);
+  const type = sourceType === 'poop' || sourceType === 'pee' ? 'diaper' : sourceType;
 
   let occurredAt;
   let createdAt;
@@ -117,6 +275,27 @@ function normalizeEventPayload(body) {
   const amountMl = parseOptionalPositiveInt(body.amountMl, 'amountMl');
   const note = parseOptionalString(body.note, 'note');
   const feedMethod = parseOptionalFeedMethod(body.feedMethod);
+  const eventMeta = parseEventMeta(body.eventMeta, sourceType);
+
+  if (
+    type === 'pump' &&
+    eventMeta != null &&
+    (eventMeta.pumpLeftMl != null || eventMeta.pumpRightMl != null)
+  ) {
+    const sideTotal = (eventMeta.pumpLeftMl ?? 0) + (eventMeta.pumpRightMl ?? 0);
+    if (sideTotal <= 0) {
+      throw makeHttpError(
+        400,
+        'eventMeta.pumpLeftMl + eventMeta.pumpRightMl must be greater than 0',
+      );
+    }
+    if (amountMl == null || amountMl !== sideTotal) {
+      throw makeHttpError(
+        400,
+        'amountMl must equal eventMeta.pumpLeftMl + eventMeta.pumpRightMl',
+      );
+    }
+  }
 
   return {
     id,
@@ -128,15 +307,41 @@ function normalizeEventPayload(body) {
     pumpStartAt,
     pumpEndAt,
     note,
+    eventMeta,
     createdAt,
     updatedAt,
   };
 }
 
 function rowToEvent(row) {
+  const normalizedType = row.type === 'poop' || row.type === 'pee' ? 'diaper' : row.type;
+  let eventMeta = null;
+  if (typeof row.event_meta === 'string' && row.event_meta.trim() !== '') {
+    try {
+      const decoded = JSON.parse(row.event_meta);
+      if (decoded != null && typeof decoded === 'object' && !Array.isArray(decoded)) {
+        eventMeta = decoded;
+      }
+    } catch {
+      eventMeta = null;
+    }
+  }
+
+  if (normalizedType === 'diaper') {
+    eventMeta ??= {
+      schemaVersion: 1,
+      status: row.type === 'poop' ? 'poop' : (row.type === 'pee' ? 'pee' : 'mixed'),
+      changedDiaper: true,
+      hasRash: false,
+      attachments: [],
+    };
+    eventMeta.changedDiaper ??= true;
+    eventMeta.status ??= row.type === 'poop' ? 'poop' : (row.type === 'pee' ? 'pee' : 'mixed');
+  }
+
   return {
     id: row.id,
-    type: row.type,
+    type: normalizedType,
     occurredAt: mysqlDateTimeToIso(row.occurred_at),
     feedMethod: row.feed_method,
     durationMin: row.duration_min,
@@ -144,6 +349,7 @@ function rowToEvent(row) {
     pumpStartAt: mysqlDateTimeToIso(row.pump_start_at),
     pumpEndAt: mysqlDateTimeToIso(row.pump_end_at),
     note: row.note,
+    eventMeta,
     createdAt: mysqlDateTimeToIso(row.created_at),
     updatedAt: mysqlDateTimeToIso(row.updated_at),
   };
@@ -157,7 +363,7 @@ function asyncRoute(handler) {
 
 const app = express();
 app.use(cors());
-app.use(express.json({ limit: '256kb' }));
+app.use(express.json({ limit: '5mb' }));
 
 app.get(
   '/health',
@@ -176,8 +382,8 @@ app.post(
       `
       INSERT INTO events (
         id, type, occurred_at, feed_method, duration_min, amount_ml,
-        pump_start_at, pump_end_at, note, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        pump_start_at, pump_end_at, note, event_meta, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON DUPLICATE KEY UPDATE
         type = VALUES(type),
         occurred_at = VALUES(occurred_at),
@@ -187,6 +393,7 @@ app.post(
         pump_start_at = VALUES(pump_start_at),
         pump_end_at = VALUES(pump_end_at),
         note = VALUES(note),
+        event_meta = VALUES(event_meta),
         created_at = VALUES(created_at),
         updated_at = VALUES(updated_at)
     `,
@@ -200,6 +407,7 @@ app.post(
         event.pumpStartAt == null ? null : toMysqlDateTime(event.pumpStartAt),
         event.pumpEndAt == null ? null : toMysqlDateTime(event.pumpEndAt),
         event.note,
+        event.eventMeta == null ? null : JSON.stringify(event.eventMeta),
         toMysqlDateTime(event.createdAt),
         toMysqlDateTime(event.updatedAt),
       ],
@@ -225,7 +433,7 @@ app.get(
     const [rows] = await pool.execute(
       `
       SELECT id, type, occurred_at, feed_method, duration_min, amount_ml,
-             pump_start_at, pump_end_at, note, created_at, updated_at
+             pump_start_at, pump_end_at, note, event_meta, created_at, updated_at
       FROM events
       WHERE occurred_at >= ? AND occurred_at < ?
       ORDER BY occurred_at DESC
@@ -266,7 +474,7 @@ app.get(
     const [rows] = await pool.execute(
       `
       SELECT id, type, occurred_at, feed_method, duration_min, amount_ml,
-             pump_start_at, pump_end_at, note, created_at, updated_at
+             pump_start_at, pump_end_at, note, event_meta, created_at, updated_at
       FROM events
       WHERE type = ?
       ORDER BY occurred_at DESC

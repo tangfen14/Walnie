@@ -174,6 +174,52 @@ paths:
 
 components:
   schemas:
+    EventAttachment:
+      type: object
+      required: [id, mimeType, base64, createdAt]
+      properties:
+        id:
+          type: string
+        mimeType:
+          type: string
+          enum: [image/jpeg, image/png]
+        base64:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+
+    EventMeta:
+      type: object
+      required: [schemaVersion, attachments]
+      properties:
+        schemaVersion:
+          type: integer
+          minimum: 1
+        status:
+          type: string
+          enum: [poop, pee, mixed]
+          nullable: true
+        changedDiaper:
+          type: boolean
+          nullable: true
+        hasRash:
+          type: boolean
+          nullable: true
+        pumpLeftMl:
+          type: integer
+          nullable: true
+          minimum: 0
+        pumpRightMl:
+          type: integer
+          nullable: true
+          minimum: 0
+        attachments:
+          type: array
+          maxItems: 3
+          items:
+            $ref: '#/components/schemas/EventAttachment'
+
     BabyEvent:
       type: object
       required:
@@ -211,6 +257,10 @@ components:
           nullable: true
         note:
           type: string
+          nullable: true
+        eventMeta:
+          allOf:
+            - $ref: '#/components/schemas/EventMeta'
           nullable: true
         createdAt:
           type: string

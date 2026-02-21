@@ -1,0 +1,232 @@
+import ActivityKit
+import SwiftUI
+import UIKit
+import WidgetKit
+
+@main
+struct WalnieLiveActivityBundle: WidgetBundle {
+  var body: some Widget {
+    if #available(iOS 16.1, *) {
+      WalnieFeedReminderWidget()
+    }
+  }
+}
+
+struct LiveActivitiesAppAttributes: ActivityAttributes, Identifiable {
+  public typealias LiveDeliveryData = ContentState
+
+  public struct ContentState: Codable, Hashable {}
+
+  var id = UUID()
+}
+
+extension LiveActivitiesAppAttributes {
+  func prefixedKey(_ key: String) -> String {
+    return "\(id)_\(key)"
+  }
+}
+
+private let walnieSharedDefaults = UserDefaults(suiteName: "group.com.wang.walnie.shared")!
+private let walnieFallbackQuickActionUrl = "walnie://quick-add/voice-feed"
+
+@available(iOSApplicationExtension 16.1, *)
+struct WalnieFeedReminderWidget: Widget {
+  var body: some WidgetConfiguration {
+    ActivityConfiguration(for: LiveActivitiesAppAttributes.self) { context in
+      WalnieReminderLockscreenView(context: context)
+        .padding(14)
+        .background(
+          RoundedRectangle(cornerRadius: 18, style: .continuous)
+            .fill(Color(red: 0.15, green: 0.19, blue: 0.27).opacity(0.96))
+        )
+        .activityBackgroundTint(Color.clear)
+        .activitySystemActionForegroundColor(.white)
+    } dynamicIsland: { context in
+      DynamicIsland {
+        DynamicIslandExpandedRegion(.leading) {
+          WalnieAvatarView(context: context)
+            .frame(width: 44, height: 44)
+        }
+
+        DynamicIslandExpandedRegion(.trailing) {
+          WalnieQuickAddButton(context: context, compact: true)
+        }
+
+        DynamicIslandExpandedRegion(.center) {
+          VStack(alignment: .leading, spacing: 2) {
+            WalnieRelativeTimeView(lastFeedAt: lastFeedAt(context: context))
+              .font(.caption)
+              .foregroundStyle(.white.opacity(0.82))
+            Text("\(lastFedTitle()): \(formattedTime(lastFeedAt: lastFeedAt(context: context)))")
+              .font(.headline)
+              .foregroundStyle(.white)
+              .lineLimit(1)
+          }
+        }
+      } compactLeading: {
+        WalnieAvatarView(context: context)
+          .frame(width: 24, height: 24)
+      } compactTrailing: {
+        Image(systemName: "plus")
+          .font(.system(size: 16, weight: .semibold))
+          .foregroundStyle(.orange)
+      } minimal: {
+        Image(systemName: "drop.fill")
+          .foregroundStyle(.orange)
+      }
+    }
+  }
+}
+
+@available(iOSApplicationExtension 16.1, *)
+private struct WalnieReminderLockscreenView: View {
+  let context: ActivityViewContext<LiveActivitiesAppAttributes>
+
+  var body: some View {
+    HStack(alignment: .center, spacing: 12) {
+      VStack(spacing: 4) {
+        WalnieAvatarView(context: context)
+          .frame(width: 52, height: 52)
+
+        Text("walnie")
+          .font(.caption2)
+          .foregroundStyle(.white.opacity(0.92))
+      }
+
+      VStack(alignment: .leading, spacing: 4) {
+        WalnieRelativeTimeView(lastFeedAt: lastFeedAt(context: context))
+          .font(.subheadline)
+          .foregroundStyle(.white.opacity(0.82))
+
+        Text("\(lastFedTitle()): \(formattedTime(lastFeedAt: lastFeedAt(context: context)))")
+          .font(.title3)
+          .fontWeight(.semibold)
+          .lineLimit(1)
+          .foregroundStyle(.white)
+
+        HStack(spacing: 6) {
+          Image(systemName: "drop.fill")
+            .font(.caption)
+            .foregroundStyle(.orange)
+          Text(feedMethodLabel(context: context))
+            .font(.subheadline)
+            .foregroundStyle(.white.opacity(0.92))
+            .lineLimit(1)
+        }
+      }
+
+      Spacer()
+
+      WalnieQuickAddButton(context: context, compact: false)
+    }
+  }
+}
+
+@available(iOSApplicationExtension 16.1, *)
+private struct WalnieAvatarView: View {
+  let context: ActivityViewContext<LiveActivitiesAppAttributes>
+
+  var body: some View {
+    if let path = walnieSharedDefaults.string(forKey: context.attributes.prefixedKey("avatar")),
+      let image = UIImage(contentsOfFile: path)
+    {
+      Image(uiImage: image)
+        .resizable()
+        .scaledToFill()
+        .clipShape(Circle())
+        .overlay(Circle().stroke(.white.opacity(0.65), lineWidth: 1))
+    } else if let bundledImage = UIImage(named: "WinnieAvatar") {
+      Image(uiImage: bundledImage)
+        .resizable()
+        .scaledToFill()
+        .clipShape(Circle())
+        .overlay(Circle().stroke(.white.opacity(0.65), lineWidth: 1))
+    } else {
+      Image(systemName: "person.circle.fill")
+        .resizable()
+        .scaledToFit()
+        .foregroundStyle(.white.opacity(0.9))
+    }
+  }
+}
+
+@available(iOSApplicationExtension 16.1, *)
+private struct WalnieRelativeTimeView: View {
+  let lastFeedAt: Date
+
+  var body: some View {
+    Text(lastFeedAt, style: .relative)
+      .lineLimit(1)
+      .minimumScaleFactor(0.9)
+  }
+}
+
+@available(iOSApplicationExtension 16.1, *)
+private struct WalnieQuickAddButton: View {
+  let context: ActivityViewContext<LiveActivitiesAppAttributes>
+  let compact: Bool
+
+  var body: some View {
+    Link(destination: quickActionURL(context: context)) {
+      Circle()
+        .fill(Color.orange)
+        .frame(width: compact ? 36 : 52, height: compact ? 36 : 52)
+        .overlay(
+          Image(systemName: "plus")
+            .font(.system(size: compact ? 18 : 24, weight: .semibold))
+            .foregroundStyle(.black)
+        )
+    }
+  }
+}
+
+@available(iOSApplicationExtension 16.1, *)
+private func quickActionURL(context: ActivityViewContext<LiveActivitiesAppAttributes>) -> URL {
+  let urlRaw = walnieSharedDefaults.string(forKey: context.attributes.prefixedKey("quickActionUrl"))
+    ?? walnieFallbackQuickActionUrl
+  return URL(string: urlRaw) ?? URL(string: walnieFallbackQuickActionUrl)!
+}
+
+@available(iOSApplicationExtension 16.1, *)
+private func lastFeedAt(context: ActivityViewContext<LiveActivitiesAppAttributes>) -> Date {
+  let raw = walnieSharedDefaults.double(forKey: context.attributes.prefixedKey("lastFeedAtMs"))
+  if raw <= 0 {
+    return Date()
+  }
+  return Date(timeIntervalSince1970: raw / 1000)
+}
+
+@available(iOSApplicationExtension 16.1, *)
+private func feedMethodLabel(context: ActivityViewContext<LiveActivitiesAppAttributes>) -> String {
+  let useChinese = isChineseLanguage()
+
+  if useChinese {
+    if let zh = walnieSharedDefaults.string(forKey: context.attributes.prefixedKey("feedMethodZh")), !zh.isEmpty {
+      return zh
+    }
+    return "瓶装母乳"
+  }
+
+  if let en = walnieSharedDefaults.string(forKey: context.attributes.prefixedKey("feedMethodEn")), !en.isEmpty {
+    return en
+  }
+  return "Bottled breast milk"
+}
+
+private func isChineseLanguage() -> Bool {
+  guard let language = Locale.preferredLanguages.first else {
+    return false
+  }
+  return language.hasPrefix("zh")
+}
+
+private func lastFedTitle() -> String {
+  return isChineseLanguage() ? "上次喂养" : "Last fed"
+}
+
+private func formattedTime(lastFeedAt: Date) -> String {
+  let formatter = DateFormatter()
+  formatter.locale = Locale.current
+  formatter.dateFormat = "HH:mm"
+  return formatter.string(from: lastFeedAt)
+}

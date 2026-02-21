@@ -1,4 +1,7 @@
+import 'dart:async';
+
 import 'package:baby_tracker/app/providers.dart';
+import 'package:baby_tracker/application/services/external_action_bus.dart';
 import 'package:baby_tracker/application/usecases/parse_voice_command_use_case.dart';
 import 'package:baby_tracker/domain/entities/baby_event.dart';
 import 'package:baby_tracker/domain/entities/voice_intent.dart';
@@ -11,7 +14,7 @@ import 'package:baby_tracker/presentation/utils/relative_time_formatter.dart';
 import 'package:baby_tracker/presentation/utils/timeline_day_utils.dart';
 import 'package:baby_tracker/presentation/utils/voice_payload_mapper.dart';
 import 'package:baby_tracker/presentation/widgets/event_editor_sheet.dart';
-import 'package:baby_tracker/presentation/widgets/summary_card.dart';
+import 'package:baby_tracker/presentation/widgets/overview_quick_panel.dart';
 import 'package:baby_tracker/presentation/widgets/voice_recording_sheet.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -25,13 +28,68 @@ class HomePage extends ConsumerStatefulWidget {
   ConsumerState<HomePage> createState() => _HomePageState();
 }
 
-class _HomePageState extends ConsumerState<HomePage> {
+class _HomePageState extends ConsumerState<HomePage>
+    with WidgetsBindingObserver {
   final GlobalKey<_HomeContentState> _homeContentKey = GlobalKey();
+  StreamSubscription<ExternalAction>? _externalActionSubscription;
+  Timer? _remoteAutoRefreshTimer;
+  bool _autoRefreshRunning = false;
+  static const Duration _remoteAutoRefreshInterval = Duration(seconds: 45);
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    final bus = ref.read(externalActionBusProvider);
+    _externalActionSubscription = bus.stream.listen(_handleExternalAction);
+    for (final pending in bus.takePending()) {
+      _handleExternalAction(pending);
+    }
+    _startRemoteAutoRefresh();
+    unawaited(_refreshFromRemoteIfNeeded());
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _remoteAutoRefreshTimer?.cancel();
+    _externalActionSubscription?.cancel();
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      unawaited(_refreshFromRemoteIfNeeded());
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     final homeStateAsync = ref.watch(homeControllerProvider);
     final parserUseCase = ref.read(parseVoiceCommandUseCaseProvider);
+    ref.listen<AsyncValue<HomeState>>(homeControllerProvider, (prev, next) {
+      if (!mounted) {
+        return;
+      }
+
+      final nextState = next.value;
+      if (nextState == null || nextState.uiNotice == null) {
+        return;
+      }
+
+      final prevVersion = prev?.value?.uiNoticeVersion;
+      if (prevVersion == nextState.uiNoticeVersion) {
+        return;
+      }
+
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(nextState.uiNotice!)));
+    });
+
+    final homeState = homeStateAsync.value;
+    final hasInitialLoading = homeState == null && homeStateAsync.isLoading;
 
     return Scaffold(
       appBar: AppBar(
@@ -50,45 +108,58 @@ class _HomePageState extends ConsumerState<HomePage> {
           ),
         ],
       ),
-      body: homeStateAsync.when(
-        data: (state) => _HomeContent(
-          key: _homeContentKey,
-          state: state,
-          onAddEvent: (type) =>
-              _openEventEditor(context, ref, initialType: type),
-          onEditEvent: (event) => _openEventEditor(
-            context,
-            ref,
-            initialType: event.type,
-            initialEvent: event,
-          ),
-          onSelectFilter: (type) {
-            final nextType = state.filterType == type ? null : type;
-            ref.read(homeControllerProvider.notifier).setFilter(nextType);
-          },
-          onRefresh: () =>
-              ref.read(homeControllerProvider.notifier).refreshData(),
-          onOpenReminderSettings: () => _showIntervalSelector(context, ref),
-        ),
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (error, _) => Center(
-          child: Padding(
-            padding: const EdgeInsets.all(WalnieTokens.spacingXl),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text('加载失败：$error'),
-                const SizedBox(height: WalnieTokens.spacingSm),
-                FilledButton(
-                  onPressed: () =>
-                      ref.read(homeControllerProvider.notifier).refreshData(),
-                  child: const Text('重试'),
+      body: homeState != null
+          ? _HomeContent(
+              key: _homeContentKey,
+              state: homeState,
+              onAddEvent: (type) =>
+                  _openEventEditor(context, ref, initialType: type),
+              onEditEvent: (event) => _openEventEditor(
+                context,
+                ref,
+                initialType: event.type,
+                initialEvent: event,
+              ),
+              onSelectFilter: (type) {
+                final nextType = homeState.filterType == type ? null : type;
+                ref.read(homeControllerProvider.notifier).setFilter(nextType);
+              },
+              onRefresh: () async {
+                try {
+                  await ref.read(homeControllerProvider.notifier).refreshData();
+                } catch (error) {
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(
+                      context,
+                    ).showSnackBar(SnackBar(content: Text('刷新失败：$error')));
+                  }
+                }
+              },
+              onOpenReminderSettings: () => _showIntervalSelector(context, ref),
+            )
+          : hasInitialLoading
+          ? const Center(
+              key: ValueKey('home-full-loading'),
+              child: CircularProgressIndicator(),
+            )
+          : Center(
+              child: Padding(
+                padding: const EdgeInsets.all(WalnieTokens.spacingXl),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text('加载失败：${homeStateAsync.error}'),
+                    const SizedBox(height: WalnieTokens.spacingSm),
+                    FilledButton(
+                      onPressed: () => ref
+                          .read(homeControllerProvider.notifier)
+                          .refreshData(),
+                      child: const Text('重试'),
+                    ),
+                  ],
                 ),
-              ],
+              ),
             ),
-          ),
-        ),
-      ),
       bottomNavigationBar: SafeArea(
         top: false,
         child: Padding(
@@ -158,6 +229,38 @@ class _HomePageState extends ConsumerState<HomePage> {
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text('提醒间隔已更新为 $value 小时')));
+    }
+  }
+
+  void _startRemoteAutoRefresh() {
+    final env = ref.read(appEnvironmentProvider);
+    if (!env.useRemoteBackend) {
+      return;
+    }
+
+    _remoteAutoRefreshTimer?.cancel();
+    _remoteAutoRefreshTimer = Timer.periodic(_remoteAutoRefreshInterval, (_) {
+      unawaited(_refreshFromRemoteIfNeeded());
+    });
+  }
+
+  Future<void> _refreshFromRemoteIfNeeded() async {
+    if (!mounted || _autoRefreshRunning) {
+      return;
+    }
+
+    final env = ref.read(appEnvironmentProvider);
+    if (!env.useRemoteBackend) {
+      return;
+    }
+
+    _autoRefreshRunning = true;
+    try {
+      await ref.read(homeControllerProvider.notifier).refreshData();
+    } catch (_) {
+      // Keep silent for background auto-refresh to avoid toast noise.
+    } finally {
+      _autoRefreshRunning = false;
     }
   }
 
@@ -294,38 +397,10 @@ class _HomePageState extends ConsumerState<HomePage> {
     ParseVoiceCommandUseCase parserUseCase, {
     String initialText = '',
   }) async {
-    final controller = TextEditingController(text: initialText);
-    controller.selection = TextSelection.collapsed(
-      offset: controller.text.length,
+    final result = await showDialog<String>(
+      context: context,
+      builder: (context) => _VoiceTextInputDialog(initialText: initialText),
     );
-    String? result;
-    try {
-      result = await showDialog<String>(
-        context: context,
-        builder: (context) {
-          return AlertDialog(
-            title: const Text('输入指令'),
-            content: TextField(
-              controller: controller,
-              decoration: const InputDecoration(hintText: '例如：记录喂奶 20分钟'),
-              autofocus: true,
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(),
-                child: const Text('取消'),
-              ),
-              FilledButton(
-                onPressed: () => Navigator.of(context).pop(controller.text),
-                child: const Text('确定'),
-              ),
-            ],
-          );
-        },
-      );
-    } finally {
-      controller.dispose();
-    }
 
     if (result == null || result.isEmpty || !context.mounted) {
       return;
@@ -540,6 +615,74 @@ class _HomePageState extends ConsumerState<HomePage> {
       },
     );
   }
+
+  void _handleExternalAction(ExternalAction action) {
+    if (!mounted) {
+      return;
+    }
+
+    switch (action) {
+      case ExternalAction.quickVoiceFeed:
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) {
+            return;
+          }
+          _handleVoiceCommand(context, ref);
+        });
+        break;
+    }
+  }
+}
+
+class _VoiceTextInputDialog extends StatefulWidget {
+  const _VoiceTextInputDialog({required this.initialText});
+
+  final String initialText;
+
+  @override
+  State<_VoiceTextInputDialog> createState() => _VoiceTextInputDialogState();
+}
+
+class _VoiceTextInputDialogState extends State<_VoiceTextInputDialog> {
+  late final TextEditingController _controller = TextEditingController(
+    text: widget.initialText,
+  );
+
+  @override
+  void initState() {
+    super.initState();
+    _controller.selection = TextSelection.collapsed(
+      offset: _controller.text.length,
+    );
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('输入指令'),
+      content: TextField(
+        controller: _controller,
+        decoration: const InputDecoration(hintText: '例如：记录喂奶 20分钟'),
+        autofocus: true,
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('取消'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.of(context).pop(_controller.text),
+          child: const Text('确定'),
+        ),
+      ],
+    );
+  }
 }
 
 class _VoiceActionBar extends StatelessWidget {
@@ -641,8 +784,6 @@ class _HomeContentState extends State<_HomeContent> {
   Widget build(BuildContext context) {
     final summaryItems = _summaryItems(widget.state);
     final dayGroups = _groupEventsByDay(widget.state.timeline);
-    final firstRowItems = summaryItems.take(3).toList(growable: false);
-    final secondRowItems = summaryItems.skip(3).toList(growable: false);
 
     return RefreshIndicator(
       onRefresh: widget.onRefresh,
@@ -661,29 +802,27 @@ class _HomeContentState extends State<_HomeContent> {
           ),
           const SizedBox(height: WalnieTokens.spacingLg),
           _SectionHeader(
-            title: '今日概览',
+            title: '今日概览与快速记录',
             subtitle: widget.state.filterType == null
                 ? '点击卡片可筛选时间线'
                 : '当前筛选：${widget.state.filterType!.labelZh}',
           ),
           const SizedBox(height: WalnieTokens.spacingSm),
-          _SummaryOverviewRows(
-            firstRowItems: firstRowItems,
-            secondRowItems: secondRowItems,
+          OverviewQuickPanel(
+            items: summaryItems,
             selectedType: widget.state.filterType,
             onSelectFilter: widget.onSelectFilter,
+            onAddEvent: widget.onAddEvent,
           ),
-          const SizedBox(height: WalnieTokens.spacingLg),
-          const _SectionHeader(title: '快速记录'),
-          const SizedBox(height: WalnieTokens.spacingSm),
-          _QuickActions(onAddEvent: widget.onAddEvent),
           const SizedBox(height: WalnieTokens.spacingXl),
           _SectionHeader(
             title: _timelineTitle(widget.state.filterType),
             subtitle: '按天分组，点击可编辑',
           ),
           const SizedBox(height: WalnieTokens.spacingSm),
-          if (widget.state.timeline.isEmpty)
+          if (widget.state.isTimelineRefreshing)
+            const _TimelineSkeletonSection()
+          else if (widget.state.timeline.isEmpty)
             Card(
               child: Padding(
                 padding: const EdgeInsets.all(WalnieTokens.spacingXl),
@@ -931,77 +1070,6 @@ int _calendarRowCountForMonth(DateTime day) {
   return (totalCells / DateTime.daysPerWeek).ceil();
 }
 
-class _SummaryOverviewRows extends StatelessWidget {
-  const _SummaryOverviewRows({
-    required this.firstRowItems,
-    required this.secondRowItems,
-    required this.selectedType,
-    required this.onSelectFilter,
-  });
-
-  final List<_SummaryItem> firstRowItems;
-  final List<_SummaryItem> secondRowItems;
-  final EventType? selectedType;
-  final void Function(EventType type) onSelectFilter;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      children: [
-        _SummaryOverviewRow(
-          items: firstRowItems,
-          selectedType: selectedType,
-          onSelectFilter: onSelectFilter,
-        ),
-        if (secondRowItems.isNotEmpty) ...[
-          const SizedBox(height: WalnieTokens.spacingSm),
-          _SummaryOverviewRow(
-            items: secondRowItems,
-            selectedType: selectedType,
-            onSelectFilter: onSelectFilter,
-          ),
-        ],
-      ],
-    );
-  }
-}
-
-class _SummaryOverviewRow extends StatelessWidget {
-  const _SummaryOverviewRow({
-    required this.items,
-    required this.selectedType,
-    required this.onSelectFilter,
-  });
-
-  final List<_SummaryItem> items;
-  final EventType? selectedType;
-  final void Function(EventType type) onSelectFilter;
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      height: 116,
-      child: Row(
-        children: [
-          for (var i = 0; i < items.length; i++) ...[
-            if (i > 0) const SizedBox(width: WalnieTokens.spacingSm),
-            Expanded(
-              child: SummaryCard(
-                title: items[i].title,
-                value: items[i].value,
-                icon: items[i].icon,
-                accentColor: _accentColor(context, items[i].type),
-                selected: selectedType == items[i].type,
-                onTap: () => onSelectFilter(items[i].type),
-              ),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-}
-
 class _SectionHeader extends StatelessWidget {
   const _SectionHeader({required this.title, this.subtitle});
 
@@ -1024,6 +1092,73 @@ class _SectionHeader extends StatelessWidget {
   }
 }
 
+class _TimelineSkeletonSection extends StatelessWidget {
+  const _TimelineSkeletonSection();
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final barColor = colorScheme.surfaceContainerHighest;
+
+    Widget bar({
+      required double width,
+      required double height,
+      BorderRadius? radius,
+    }) {
+      return Container(
+        width: width,
+        height: height,
+        decoration: BoxDecoration(
+          color: barColor,
+          borderRadius: radius ?? BorderRadius.circular(WalnieTokens.radiusSm),
+        ),
+      );
+    }
+
+    return Container(
+      key: const ValueKey('timeline-skeleton'),
+      child: Column(
+        children: List<Widget>.generate(4, (index) {
+          return Padding(
+            padding: EdgeInsets.only(
+              bottom: index == 3 ? 0 : WalnieTokens.spacingMd,
+            ),
+            child: Card(
+              child: Padding(
+                padding: const EdgeInsets.all(WalnieTokens.spacingMd),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    bar(width: 84, height: 10),
+                    const SizedBox(height: WalnieTokens.spacingSm),
+                    Row(
+                      children: [
+                        bar(
+                          width: 34,
+                          height: 34,
+                          radius: BorderRadius.circular(99),
+                        ),
+                        const SizedBox(width: WalnieTokens.spacingSm),
+                        Expanded(
+                          child: bar(width: double.infinity, height: 12),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: WalnieTokens.spacingSm),
+                    bar(width: double.infinity, height: 10),
+                    const SizedBox(height: WalnieTokens.spacingXs),
+                    bar(width: 180, height: 10),
+                  ],
+                ),
+              ),
+            ),
+          );
+        }),
+      ),
+    );
+  }
+}
+
 class _BrandHeader extends StatelessWidget {
   const _BrandHeader({
     required this.state,
@@ -1037,6 +1172,7 @@ class _BrandHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
+    final babyDay = _babyAgeDayByBeijingClock();
     final todayTotal =
         state.todaySummary.feedCount +
         state.todaySummary.poopCount +
@@ -1058,7 +1194,30 @@ class _BrandHeader extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Walnie', style: theme.textTheme.headlineSmall),
+          Row(
+            children: [
+              Text('Walnie', style: theme.textTheme.headlineSmall),
+              const SizedBox(width: WalnieTokens.spacingSm),
+              Container(
+                key: const ValueKey('baby-age-badge'),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: WalnieTokens.spacingSm,
+                  vertical: WalnieTokens.spacingXs,
+                ),
+                decoration: BoxDecoration(
+                  color: colorScheme.secondary.withValues(alpha: 0.22),
+                  borderRadius: BorderRadius.circular(WalnieTokens.radiusSm),
+                  border: Border.all(color: colorScheme.outlineVariant),
+                ),
+                child: Text(
+                  '第$babyDay天',
+                  style: theme.textTheme.labelMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ],
+          ),
           const SizedBox(height: WalnieTokens.spacingXs),
           Text('今天累计记录 $todayTotal 条', style: theme.textTheme.bodyLarge),
           const SizedBox(height: WalnieTokens.spacingLg),
@@ -1094,108 +1253,44 @@ class _BrandHeader extends StatelessWidget {
   }
 }
 
-class _QuickActions extends StatelessWidget {
-  const _QuickActions({required this.onAddEvent});
+int _babyAgeDayByBeijingClock({DateTime? now}) {
+  final beijingNow = (now ?? DateTime.now()).toUtc().add(
+    const Duration(hours: 8),
+  );
+  final beijingToday = DateTime(
+    beijingNow.year,
+    beijingNow.month,
+    beijingNow.day,
+  );
 
-  final void Function(EventType type) onAddEvent;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      children: [
-        Row(
-          children: [
-            Expanded(
-              child: FilledButton.icon(
-                onPressed: () => onAddEvent(EventType.feed),
-                icon: const Icon(Icons.local_drink),
-                label: const Text('记录喂奶'),
-              ),
-            ),
-            const SizedBox(width: WalnieTokens.spacingSm),
-            Expanded(
-              child: FilledButton.icon(
-                onPressed: () => onAddEvent(EventType.pump),
-                icon: const Icon(Icons.science),
-                label: const Text('记录吸奶'),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: WalnieTokens.spacingSm),
-        Row(
-          children: [
-            Expanded(
-              child: OutlinedButton.icon(
-                onPressed: () => onAddEvent(EventType.poop),
-                icon: const Icon(Icons.baby_changing_station),
-                label: const Text('便便'),
-              ),
-            ),
-            const SizedBox(width: WalnieTokens.spacingSm),
-            Expanded(
-              child: OutlinedButton.icon(
-                onPressed: () => onAddEvent(EventType.pee),
-                icon: const Icon(Icons.water_drop),
-                label: const Text('尿尿'),
-              ),
-            ),
-            const SizedBox(width: WalnieTokens.spacingSm),
-            Expanded(
-              child: OutlinedButton.icon(
-                onPressed: () => onAddEvent(EventType.diaper),
-                icon: const Icon(Icons.checkroom),
-                label: const Text('换尿布'),
-              ),
-            ),
-          ],
-        ),
-      ],
-    );
+  var birthDate = DateTime(beijingToday.year, 2, 7);
+  if (beijingToday.isBefore(birthDate)) {
+    birthDate = DateTime(beijingToday.year - 1, 2, 7);
   }
+
+  final elapsedDays = beijingToday.difference(birthDate).inDays;
+  return elapsedDays + 1;
 }
 
-class _SummaryItem {
-  const _SummaryItem({
-    required this.type,
-    required this.title,
-    required this.value,
-    required this.icon,
-  });
-
-  final EventType type;
-  final String title;
-  final String value;
-  final IconData icon;
-}
-
-List<_SummaryItem> _summaryItems(HomeState state) {
+List<OverviewQuickItem> _summaryItems(HomeState state) {
+  final diaperTotal =
+      state.todaySummary.diaperCount +
+      state.todaySummary.poopCount +
+      state.todaySummary.peeCount;
   return [
-    _SummaryItem(
+    OverviewQuickItem(
       type: EventType.feed,
       title: '喂奶',
       value: '${state.todaySummary.feedCount}',
       icon: Icons.local_drink,
     ),
-    _SummaryItem(
-      type: EventType.poop,
-      title: '便便',
-      value: '${state.todaySummary.poopCount}',
-      icon: Icons.baby_changing_station,
-    ),
-    _SummaryItem(
-      type: EventType.pee,
-      title: '尿尿',
-      value: '${state.todaySummary.peeCount}',
-      icon: Icons.water_drop,
-    ),
-    _SummaryItem(
+    OverviewQuickItem(
       type: EventType.diaper,
       title: '换尿布',
-      value: '${state.todaySummary.diaperCount}',
+      value: '$diaperTotal',
       icon: Icons.checkroom,
     ),
-    _SummaryItem(
+    OverviewQuickItem(
       type: EventType.pump,
       title: '吸奶',
       value: '${state.todaySummary.pumpCount}',
@@ -1283,6 +1378,8 @@ class _TimelineTrackItem extends StatelessWidget {
     required this.onTap,
   });
 
+  static const _timeColumnWidth = 66.0;
+
   final BabyEvent event;
   final bool isLast;
   final bool showRelative;
@@ -1308,12 +1405,15 @@ class _TimelineTrackItem extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 SizedBox(
-                  width: 48,
+                  width: _timeColumnWidth,
                   child: Padding(
                     padding: const EdgeInsets.only(top: 2),
                     child: Text(
                       DateFormat('HH:mm').format(event.occurredAt),
                       style: theme.textTheme.bodyMedium,
+                      maxLines: 1,
+                      softWrap: false,
+                      overflow: TextOverflow.clip,
                     ),
                   ),
                 ),
@@ -1414,9 +1514,9 @@ IconData _iconFor(EventType type) {
     case EventType.feed:
       return Icons.local_drink;
     case EventType.poop:
-      return Icons.baby_changing_station;
+      return Icons.checkroom;
     case EventType.pee:
-      return Icons.water_drop;
+      return Icons.checkroom;
     case EventType.diaper:
       return Icons.checkroom;
     case EventType.pump:
@@ -1430,9 +1530,9 @@ Color _accentColor(BuildContext context, EventType type) {
     case EventType.feed:
       return colors.feed;
     case EventType.poop:
-      return colors.poop;
+      return colors.diaper;
     case EventType.pee:
-      return colors.pee;
+      return colors.diaper;
     case EventType.diaper:
       return colors.diaper;
     case EventType.pump:
@@ -1489,10 +1589,20 @@ String _primaryMetric(BabyEvent event) {
 String _subtitleFor(BabyEvent event) {
   if (event.type == EventType.feed) {
     final chunks = <String>[];
+    final leftDuration = event.eventMeta?.feedLeftDurationMin;
+    final rightDuration = event.eventMeta?.feedRightDurationMin;
     if (event.feedMethod != null) {
       chunks.add(event.feedMethod!.labelZh);
     }
-    if (event.durationMin != null) {
+    if ((leftDuration ?? 0) > 0) {
+      chunks.add('左侧 $leftDuration 分钟');
+    }
+    if ((rightDuration ?? 0) > 0) {
+      chunks.add('右侧 $rightDuration 分钟');
+    }
+    if ((leftDuration ?? 0) <= 0 &&
+        (rightDuration ?? 0) <= 0 &&
+        event.durationMin != null) {
       chunks.add('${event.durationMin} 分钟');
     }
     if (event.amountMl != null) {
@@ -1518,6 +1628,34 @@ String _subtitleFor(BabyEvent event) {
       chunks.add(event.note!);
     }
     return chunks.isEmpty ? '无附加信息' : chunks.join(' · ');
+  }
+
+  if (event.type == EventType.diaper ||
+      event.type == EventType.poop ||
+      event.type == EventType.pee) {
+    final chunks = <String>[];
+    final meta = event.eventMeta;
+
+    chunks.add(meta?.status?.labelZh ?? '状态未记录');
+
+    if (meta?.changedDiaper != null) {
+      chunks.add('更换纸布：${meta!.changedDiaper! ? '是' : '否'}');
+    }
+
+    if (meta?.hasRash != null) {
+      chunks.add('红屁屁：${meta!.hasRash! ? '是' : '否'}');
+    }
+
+    final imageCount = meta?.attachments.length ?? 0;
+    if (imageCount > 0) {
+      chunks.add('$imageCount 张图片');
+    }
+
+    if (event.note != null && event.note!.isNotEmpty) {
+      chunks.add(event.note!);
+    }
+
+    return chunks.join(' · ');
   }
 
   if (event.note == null || event.note!.isEmpty) {

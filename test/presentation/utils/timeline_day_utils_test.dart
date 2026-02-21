@@ -34,7 +34,7 @@ void main() {
       BabyEvent(type: EventType.pee, occurredAt: DateTime(2026, 2, 20, 17, 30)),
     ];
 
-    expect(formatTimelineGroupSummary(events), '尿尿 2 次');
+    expect(formatTimelineGroupSummary(events), '换尿布 2 次');
   });
 
   test('extracts event day starts for calendar markers', () {

@@ -2,6 +2,11 @@ import 'package:baby_tracker/domain/entities/baby_event.dart';
 import 'package:baby_tracker/domain/entities/voice_intent.dart';
 
 class RuleBasedIntentParser {
+  RuleBasedIntentParser({DateTime Function()? nowProvider})
+    : _nowProvider = nowProvider ?? DateTime.now;
+
+  final DateTime Function() _nowProvider;
+
   VoiceIntent parse(String transcript) {
     final text = transcript.trim();
     if (text.isEmpty) {
@@ -27,6 +32,7 @@ class RuleBasedIntentParser {
     final amountMl = _extractAmountMl(text);
     final durationMin = _extractDurationMin(text);
     final feedMethod = _extractFeedMethod(text, eventType);
+    final diaperStatus = _extractDiaperStatus(text, eventType);
 
     final payload = <String, dynamic>{
       'eventType': eventType.name,
@@ -48,6 +54,10 @@ class RuleBasedIntentParser {
       final endAt = startAt.add(Duration(minutes: durationMin ?? 20));
       payload['pumpStartAt'] = startAt.toIso8601String();
       payload['pumpEndAt'] = endAt.toIso8601String();
+    }
+    if (eventType == EventType.diaper && diaperStatus != null) {
+      payload['diaperStatus'] = diaperStatus.name;
+      payload['changedDiaper'] = true;
     }
 
     final confidence = _computeConfidence(
@@ -144,23 +154,60 @@ class RuleBasedIntentParser {
   }
 
   EventType? _detectEventType(String text) {
-    if (_containsAny(text, const ['便便', '拉屎', '大便'])) {
-      return EventType.poop;
+    if (_containsAny(text, const ['换尿布', '尿布', '换片', '纸尿裤', '换纸尿裤'])) {
+      return EventType.diaper;
     }
 
-    if (_containsAny(text, const ['尿尿', '撒尿', '小便'])) {
-      return EventType.pee;
+    if (_containsAny(text, const ['便便', '拉屎', '大便', '尿尿', '撒尿', '小便'])) {
+      return EventType.diaper;
     }
 
     if (_containsAny(text, const ['吸奶', '吸乳', '吸出来'])) {
       return EventType.pump;
     }
 
-    if (_containsAny(text, const ['喂奶', '吃奶', '喝奶', '母乳', '配方奶', '奶瓶'])) {
+    final hasFeedContext = _containsAny(text, const ['奶', '母乳', '配方奶', '奶瓶']);
+    if (_containsAny(text, const ['喝水', '吃药', '喂药', '喝药']) && !hasFeedContext) {
+      return null;
+    }
+
+    if (_containsAny(text, const [
+      '喂奶',
+      '吃奶',
+      '喝奶',
+      '母乳',
+      '配方奶',
+      '奶瓶',
+      '炫',
+      '吃',
+      '喂',
+      '喝',
+      '顿顿顿',
+      '喂养',
+    ])) {
       return EventType.feed;
     }
 
     return null;
+  }
+
+  DiaperStatus? _extractDiaperStatus(String text, EventType eventType) {
+    if (eventType != EventType.diaper) {
+      return null;
+    }
+
+    final hasPoop = _containsAny(text, const ['便便', '拉屎', '大便']);
+    final hasPee = _containsAny(text, const ['尿尿', '撒尿', '小便']);
+    if (hasPoop && hasPee) {
+      return DiaperStatus.mixed;
+    }
+    if (hasPoop) {
+      return DiaperStatus.poop;
+    }
+    if (hasPee) {
+      return DiaperStatus.pee;
+    }
+    return DiaperStatus.mixed;
   }
 
   FeedMethod? _extractFeedMethod(String text, EventType eventType) {
@@ -196,7 +243,7 @@ class RuleBasedIntentParser {
   }
 
   DateTime _extractOccurredAt(String text) {
-    final now = DateTime.now();
+    final now = _nowProvider();
 
     final minutesAgo = RegExp(r'(\d+)\s*分钟前').firstMatch(text);
     if (minutesAgo != null) {
@@ -214,28 +261,34 @@ class RuleBasedIntentParser {
       }
     }
 
-    final todayClock = RegExp(
-      r'今天\s*(\d{1,2})点(?:\s*(\d{1,2})分?)?',
+    final monthDayClock = RegExp(
+      r'(?<!\d)(\d{1,2})月(\d{1,2})日?\s*(?:(凌晨|早上|上午|中午|下午|傍晚|晚上|夜里|半夜)\s*)?(\d{1,2})点(?:\s*(\d{1,2})分?)?',
     ).firstMatch(text);
-    if (todayClock != null) {
+    if (monthDayClock != null) {
       final parsed = _buildDateTime(
-        now,
-        todayClock.group(1),
-        todayClock.group(2),
+        now: now,
+        monthText: monthDayClock.group(1),
+        dayText: monthDayClock.group(2),
+        meridiemText: monthDayClock.group(3),
+        hourText: monthDayClock.group(4),
+        minuteText: monthDayClock.group(5),
       );
       if (parsed != null) {
         return parsed;
       }
     }
 
-    final todayColonClock = RegExp(
-      r'今天\s*(\d{1,2})\s*[:：]\s*(\d{1,2})(?:\s*[:：]\s*\d{1,2})?',
+    final monthDayColonClock = RegExp(
+      r'(?<!\d)(\d{1,2})月(\d{1,2})日?\s*(?:(凌晨|早上|上午|中午|下午|傍晚|晚上|夜里|半夜)\s*)?(\d{1,2})\s*[:：]\s*(\d{1,2})(?:\s*[:：]\s*\d{1,2})?(?!\d)',
     ).firstMatch(text);
-    if (todayColonClock != null) {
+    if (monthDayColonClock != null) {
       final parsed = _buildDateTime(
-        now,
-        todayColonClock.group(1),
-        todayColonClock.group(2),
+        now: now,
+        monthText: monthDayColonClock.group(1),
+        dayText: monthDayColonClock.group(2),
+        meridiemText: monthDayColonClock.group(3),
+        hourText: monthDayColonClock.group(4),
+        minuteText: monthDayColonClock.group(5),
       );
       if (parsed != null) {
         return parsed;
@@ -243,23 +296,29 @@ class RuleBasedIntentParser {
     }
 
     final clock = RegExp(
-      r'(?<!\d)(\d{1,2})点(?:\s*(\d{1,2})分?)?',
+      r'(?:(凌晨|早上|上午|中午|下午|傍晚|晚上|夜里|半夜)\s*)?(?<!\d)(\d{1,2})点(?:\s*(\d{1,2})分?)?',
     ).firstMatch(text);
     if (clock != null) {
-      final parsed = _buildDateTime(now, clock.group(1), clock.group(2));
+      final parsed = _buildDateTime(
+        now: now,
+        meridiemText: clock.group(1),
+        hourText: clock.group(2),
+        minuteText: clock.group(3),
+      );
       if (parsed != null) {
         return parsed;
       }
     }
 
     final colonClock = RegExp(
-      r'(?<!\d)(\d{1,2})\s*[:：]\s*(\d{1,2})(?:\s*[:：]\s*\d{1,2})?(?!\d)',
+      r'(?:(凌晨|早上|上午|中午|下午|傍晚|晚上|夜里|半夜)\s*)?(?<!\d)(\d{1,2})\s*[:：]\s*(\d{1,2})(?:\s*[:：]\s*\d{1,2})?(?!\d)',
     ).firstMatch(text);
     if (colonClock != null) {
       final parsed = _buildDateTime(
-        now,
-        colonClock.group(1),
-        colonClock.group(2),
+        now: now,
+        meridiemText: colonClock.group(1),
+        hourText: colonClock.group(2),
+        minuteText: colonClock.group(3),
       );
       if (parsed != null) {
         return parsed;
@@ -273,19 +332,66 @@ class RuleBasedIntentParser {
     return now;
   }
 
-  DateTime? _buildDateTime(DateTime now, String? h, String? m) {
-    final hour = int.tryParse(h ?? '');
-    final minute = int.tryParse(m ?? '0') ?? 0;
-    if (hour == null || hour > 23 || minute > 59) {
+  DateTime? _buildDateTime({
+    required DateTime now,
+    String? monthText,
+    String? dayText,
+    String? meridiemText,
+    String? hourText,
+    String? minuteText,
+  }) {
+    final month = int.tryParse(monthText ?? '') ?? now.month;
+    final day = int.tryParse(dayText ?? '') ?? now.day;
+    final hour = int.tryParse(hourText ?? '');
+    final minute = int.tryParse(minuteText ?? '0') ?? 0;
+
+    if (month < 1 || month > 12 || day < 1 || day > 31) {
+      return null;
+    }
+    if (hour == null || hour < 0 || hour > 23 || minute < 0 || minute > 59) {
       return null;
     }
 
-    final candidate = DateTime(now.year, now.month, now.day, hour, minute);
-    if (candidate.isAfter(now.add(const Duration(minutes: 2)))) {
-      return candidate.subtract(const Duration(days: 1));
+    final resolvedHour = _resolveHourByMeridiem(
+      now: now,
+      hour: hour,
+      meridiemText: meridiemText,
+    );
+    if (resolvedHour == null) {
+      return null;
     }
 
+    final candidate = DateTime(now.year, month, day, resolvedHour, minute);
+    if (candidate.year != now.year ||
+        candidate.month != month ||
+        candidate.day != day) {
+      return null;
+    }
     return candidate;
+  }
+
+  int? _resolveHourByMeridiem({
+    required DateTime now,
+    required int hour,
+    String? meridiemText,
+  }) {
+    final meridiem = meridiemText?.trim() ?? '';
+    if (hour > 12 || meridiem.isEmpty) {
+      if (hour <= 12 && meridiem.isEmpty && now.hour >= 12 && hour < 12) {
+        return hour + 12;
+      }
+      return hour;
+    }
+
+    if (_containsAny(meridiem, const ['凌晨', '早上', '上午', '夜里', '半夜'])) {
+      return hour == 12 ? 0 : hour;
+    }
+
+    if (_containsAny(meridiem, const ['中午', '下午', '傍晚', '晚上'])) {
+      return hour < 12 ? hour + 12 : hour;
+    }
+
+    return hour;
   }
 
   int? _extractAmountMl(String text) {

@@ -1,9 +1,11 @@
 import 'dart:async';
 
 import 'package:baby_tracker/domain/entities/voice_intent.dart';
+import 'package:baby_tracker/domain/repositories/voice_normalization_config_repository.dart';
 import 'package:baby_tracker/domain/services/voice_command_service.dart';
 import 'package:baby_tracker/infrastructure/voice/llm_fallback_parser.dart';
 import 'package:baby_tracker/infrastructure/voice/rule_based_intent_parser.dart';
+import 'package:baby_tracker/infrastructure/voice/voice_text_normalizer.dart';
 import 'package:speech_to_text/speech_to_text.dart';
 
 class VoiceCommandServiceImpl implements VoiceCommandService {
@@ -11,13 +13,20 @@ class VoiceCommandServiceImpl implements VoiceCommandService {
     required SpeechToText speechToText,
     required RuleBasedIntentParser ruleBasedIntentParser,
     required LlmFallbackParser llmFallbackParser,
+    required VoiceNormalizationConfigRepository
+    voiceNormalizationConfigRepository,
+    required VoiceTextNormalizer voiceTextNormalizer,
   }) : _speechToText = speechToText,
        _ruleBasedIntentParser = ruleBasedIntentParser,
-       _llmFallbackParser = llmFallbackParser;
+       _llmFallbackParser = llmFallbackParser,
+       _voiceNormalizationConfigRepository = voiceNormalizationConfigRepository,
+       _voiceTextNormalizer = voiceTextNormalizer;
 
   final SpeechToText _speechToText;
   final RuleBasedIntentParser _ruleBasedIntentParser;
   final LlmFallbackParser _llmFallbackParser;
+  final VoiceNormalizationConfigRepository _voiceNormalizationConfigRepository;
+  final VoiceTextNormalizer _voiceTextNormalizer;
 
   @override
   Future<String> transcribe() async {
@@ -72,8 +81,22 @@ class VoiceCommandServiceImpl implements VoiceCommandService {
       throw const VoiceParseCancelledException();
     }
 
+    final rawTranscript = transcript.trim();
+    var normalizedForRule = rawTranscript;
+    try {
+      final normalizationConfig = await _voiceNormalizationConfigRepository
+          .getActiveConfig();
+      normalizedForRule = _voiceTextNormalizer.normalizeForRule(
+        rawTranscript,
+        normalizationConfig,
+      );
+      unawaited(_voiceNormalizationConfigRepository.refreshIfStale());
+    } catch (_) {
+      normalizedForRule = rawTranscript;
+    }
+
     onProgress?.call(VoiceParseProgress.ruleMatching);
-    final ruleIntent = _ruleBasedIntentParser.parse(transcript);
+    final ruleIntent = _ruleBasedIntentParser.parse(normalizedForRule);
 
     if (cancellationToken?.isCancelled == true) {
       throw const VoiceParseCancelledException();
@@ -81,12 +104,20 @@ class VoiceCommandServiceImpl implements VoiceCommandService {
 
     if (ruleIntent.intentType != VoiceIntentType.unknown) {
       onProgress?.call(VoiceParseProgress.ruleMatched);
-      return ruleIntent;
+      final mergedPayload = Map<String, dynamic>.from(ruleIntent.payload);
+      mergedPayload['note'] = rawTranscript;
+      return VoiceIntent(
+        intentType: ruleIntent.intentType,
+        confidence: ruleIntent.confidence,
+        payload: mergedPayload,
+        needsConfirmation: ruleIntent.needsConfirmation,
+        rawTranscript: transcript,
+      );
     }
 
     onProgress?.call(VoiceParseProgress.fallbackToLlm);
     final llmIntent = await _llmFallbackParser.parse(
-      transcript,
+      rawTranscript,
       cancellationToken: cancellationToken,
     );
     if (cancellationToken?.isCancelled == true) {

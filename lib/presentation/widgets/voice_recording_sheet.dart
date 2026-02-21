@@ -27,6 +27,7 @@ class VoiceRecordingSheet extends StatefulWidget {
 }
 
 class _VoiceRecordingSheetState extends State<VoiceRecordingSheet> {
+  static const String _voiceExamplePrompt = '您可以说：「17点10分炫了60ml」、「8点20换了纸尿裤」';
   static const double _swipeUpThreshold = 80.0;
   static const int _waveBarCount = 20;
   static const double _minWaveHeight = 6.0;
@@ -232,7 +233,7 @@ class _VoiceRecordingSheetState extends State<VoiceRecordingSheet> {
 
   String _getStatusText() {
     if (_isSwipedUp) return '松开发送';
-    return '上滑发送，或使用下方按钮';
+    return _voiceExamplePrompt;
   }
 
   void _finish(VoiceRecordingAction action) {
@@ -246,13 +247,40 @@ class _VoiceRecordingSheetState extends State<VoiceRecordingSheet> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final voiceColors = theme.voiceOverlayColors;
+    final scheme = theme.colorScheme;
     final motion = theme.motionTokens;
     final disableAnimations =
         MediaQuery.maybeOf(context)?.disableAnimations ?? false;
-    final statusColor = _isSwipedUp
-        ? voiceColors.accent
-        : voiceColors.foreground;
+    final statusColor = _isSwipedUp ? scheme.primary : scheme.onSurface;
+    final mediaSize = MediaQuery.sizeOf(context);
+    final orbSize = (mediaSize.width * 0.66).clamp(220.0, 340.0).toDouble();
+    final leftBackground =
+        Color.lerp(scheme.primaryContainer, scheme.surface, 0.42) ??
+        scheme.primaryContainer;
+    final rightBackground =
+        Color.lerp(scheme.secondaryContainer, scheme.surface, 0.3) ??
+        scheme.secondaryContainer;
+    final orbTop =
+        Color.lerp(scheme.primary, scheme.surface, 0.56) ?? scheme.primary;
+    final orbBottom =
+        Color.lerp(scheme.tertiary, scheme.surface, 0.62) ?? scheme.tertiary;
+    final bubbleColor = scheme.surface.withValues(alpha: 0.42);
+    final audioLevel =
+        ((_currentWaveHeight - _minWaveHeight) /
+                (_maxWaveHeight - _minWaveHeight))
+            .clamp(0.0, 1.0)
+            .toDouble();
+    final breathA = ((math.sin(_wavePhase * 1.6) + 1) / 2).toDouble();
+    final breathB = ((math.sin((_wavePhase * 1.6) + (math.pi / 2)) + 1) / 2)
+        .toDouble();
+    final ringInnerScale = 1.08 + (audioLevel * 0.18) + (breathA * 0.04);
+    final ringOuterScale = 1.18 + (audioLevel * 0.28) + (breathB * 0.08);
+    final ringInnerOpacity = (0.12 + (audioLevel * 0.15) + (breathA * 0.04))
+        .clamp(0.08, 0.34)
+        .toDouble();
+    final ringOuterOpacity = (0.06 + (audioLevel * 0.12) + (breathB * 0.03))
+        .clamp(0.05, 0.24)
+        .toDouble();
 
     return GestureDetector(
       onVerticalDragStart: (details) {
@@ -272,41 +300,72 @@ class _VoiceRecordingSheetState extends State<VoiceRecordingSheet> {
         });
         _finish(action);
       },
-      child: ColoredBox(
-        color: voiceColors.background,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [leftBackground, rightBackground],
+          ),
+        ),
         child: Stack(
           children: [
+            Positioned(
+              top: mediaSize.height * 0.2,
+              left: 0,
+              right: 0,
+              child: Center(
+                child: IgnorePointer(
+                  child: AnimatedContainer(
+                    duration: disableAnimations ? Duration.zero : motion.normal,
+                    width: orbSize + 38,
+                    height: orbSize + 38,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: scheme.primary.withValues(alpha: 0.07),
+                    ),
+                  ),
+                ),
+              ),
+            ),
             Positioned(
               top: 0,
               left: 0,
               right: 0,
               child: SafeArea(
                 bottom: false,
-                child: AnimatedOpacity(
-                  duration: disableAnimations ? Duration.zero : motion.fast,
-                  opacity: _isSwipedUp ? 1.0 : 0.35,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      vertical: WalnieTokens.spacingXl,
-                    ),
-                    alignment: Alignment.center,
-                    child: Column(
-                      children: [
-                        Icon(
-                          Icons.keyboard_arrow_up,
-                          color: statusColor,
-                          size: 28,
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(
+                    WalnieTokens.spacingLg,
+                    WalnieTokens.spacingSm,
+                    WalnieTokens.spacingLg,
+                    0,
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.more_horiz, color: scheme.onSurface),
+                      const Spacer(),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: WalnieTokens.spacingMd,
+                          vertical: WalnieTokens.spacingSm,
                         ),
-                        const SizedBox(height: WalnieTokens.spacingXs),
-                        Text(
-                          _isSwipedUp ? '松开发送' : '上滑确认',
-                          style: theme.textTheme.bodyMedium?.copyWith(
-                            color: statusColor,
-                            fontWeight: FontWeight.w600,
+                        decoration: BoxDecoration(
+                          color: bubbleColor,
+                          borderRadius: BorderRadius.circular(
+                            WalnieTokens.radiusXl,
                           ),
                         ),
-                      ],
-                    ),
+                        child: Text(
+                          '语音记录模式',
+                          style: theme.textTheme.titleSmall?.copyWith(
+                            color: scheme.onSurface,
+                          ),
+                        ),
+                      ),
+                      const Spacer(),
+                      Icon(Icons.text_fields_rounded, color: scheme.onSurface),
+                    ],
                   ),
                 ),
               ),
@@ -321,152 +380,225 @@ class _VoiceRecordingSheetState extends State<VoiceRecordingSheet> {
                   0,
                 ),
                 child: SingleChildScrollView(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: WalnieTokens.spacingXl,
+                  padding: const EdgeInsets.fromLTRB(
+                    WalnieTokens.spacingXl,
+                    70,
+                    WalnieTokens.spacingXl,
+                    WalnieTokens.spacingXl,
                   ),
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Container(
-                        width: 220,
-                        height: 86,
-                        decoration: BoxDecoration(
-                          color: voiceColors.accentSoft,
-                          borderRadius: BorderRadius.circular(
-                            WalnieTokens.radiusLg,
-                          ),
-                        ),
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: WalnieTokens.spacingSm,
-                          ),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            crossAxisAlignment: CrossAxisAlignment.center,
-                            children: List.generate(_waveBarCount, (index) {
-                              final volume = _volumeLevels[index];
-                              return AnimatedContainer(
-                                duration: disableAnimations
-                                    ? Duration.zero
-                                    : motion.fast,
-                                margin: const EdgeInsets.symmetric(
-                                  horizontal: 1.5,
+                      const SizedBox(height: WalnieTokens.spacingLg),
+                      SizedBox(
+                        width: orbSize * 1.72,
+                        height: orbSize * 1.72,
+                        child: Stack(
+                          alignment: Alignment.center,
+                          children: [
+                            AnimatedContainer(
+                              key: const Key('voicePulseRingOuter'),
+                              duration: disableAnimations
+                                  ? Duration.zero
+                                  : motion.fast,
+                              width: orbSize * ringOuterScale,
+                              height: orbSize * ringOuterScale,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                border: Border.all(
+                                  color: scheme.primary.withValues(
+                                    alpha: ringOuterOpacity,
+                                  ),
+                                  width: 1.2,
                                 ),
-                                width: 5,
-                                height: volume.clamp(4.0, 60.0),
-                                decoration: BoxDecoration(
-                                  color: statusColor,
-                                  borderRadius: BorderRadius.circular(2.5),
+                                gradient: RadialGradient(
+                                  colors: [
+                                    scheme.primary.withValues(
+                                      alpha: ringOuterOpacity * 0.45,
+                                    ),
+                                    scheme.primary.withValues(alpha: 0),
+                                  ],
+                                  stops: const [0.62, 1],
                                 ),
-                              );
-                            }),
-                          ),
+                              ),
+                            ),
+                            AnimatedContainer(
+                              key: const Key('voicePulseRingInner'),
+                              duration: disableAnimations
+                                  ? Duration.zero
+                                  : motion.fast,
+                              width: orbSize * ringInnerScale,
+                              height: orbSize * ringInnerScale,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                border: Border.all(
+                                  color: scheme.primary.withValues(
+                                    alpha: ringInnerOpacity,
+                                  ),
+                                  width: 1.6,
+                                ),
+                                gradient: RadialGradient(
+                                  colors: [
+                                    scheme.primary.withValues(
+                                      alpha: ringInnerOpacity * 0.48,
+                                    ),
+                                    scheme.primary.withValues(alpha: 0),
+                                  ],
+                                  stops: const [0.64, 1],
+                                ),
+                              ),
+                            ),
+                            Container(
+                              width: orbSize,
+                              height: orbSize,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                gradient: LinearGradient(
+                                  begin: Alignment.topLeft,
+                                  end: Alignment.bottomRight,
+                                  colors: [orbTop, orbBottom],
+                                ),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: scheme.primary.withValues(
+                                      alpha: 0.18,
+                                    ),
+                                    blurRadius: 38,
+                                    offset: const Offset(0, 18),
+                                  ),
+                                ],
+                              ),
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: WalnieTokens.spacingXl,
+                                ),
+                                child: Center(
+                                  child: Row(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.center,
+                                    children: List.generate(_waveBarCount, (
+                                      index,
+                                    ) {
+                                      final volume = _volumeLevels[index];
+                                      return AnimatedContainer(
+                                        duration: disableAnimations
+                                            ? Duration.zero
+                                            : motion.fast,
+                                        margin: const EdgeInsets.symmetric(
+                                          horizontal: 1.6,
+                                        ),
+                                        width: 4.8,
+                                        height: volume.clamp(8.0, 66.0),
+                                        decoration: BoxDecoration(
+                                          color: statusColor.withValues(
+                                            alpha: 0.94,
+                                          ),
+                                          borderRadius: BorderRadius.circular(
+                                            2.4,
+                                          ),
+                                        ),
+                                      );
+                                    }),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                       const SizedBox(height: WalnieTokens.spacingLg),
-                      Text(
-                        _getStatusText(),
-                        style: theme.textTheme.titleSmall?.copyWith(
-                          color: voiceColors.foreground,
+                      ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 360),
+                        child: Text(
+                          _getStatusText(),
+                          style: theme.textTheme.titleMedium?.copyWith(
+                            fontSize: 20,
+                            fontWeight: FontWeight.w700,
+                            color: scheme.onSurface.withValues(alpha: 0.72),
+                            height: 1.35,
+                          ),
+                          textAlign: TextAlign.center,
                         ),
                       ),
                       const SizedBox(height: WalnieTokens.spacingMd),
-                      if (_transcript.isNotEmpty)
-                        Semantics(
-                          liveRegion: true,
-                          label: '实时转写内容 $_transcript',
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: WalnieTokens.spacingLg,
-                              vertical: WalnieTokens.spacingMd,
-                            ),
-                            constraints: const BoxConstraints(maxWidth: 320),
-                            decoration: BoxDecoration(
-                              color: voiceColors.transcriptSurface,
-                              borderRadius: BorderRadius.circular(
-                                WalnieTokens.radiusMd,
+                      SizedBox(
+                        key: const Key('voiceTranscriptSlot'),
+                        height: 96,
+                        child: Center(
+                          child: AnimatedOpacity(
+                            duration: disableAnimations
+                                ? Duration.zero
+                                : motion.fast,
+                            opacity: _transcript.isEmpty ? 0 : 1,
+                            child: Semantics(
+                              liveRegion: _transcript.isNotEmpty,
+                              label: _transcript.isNotEmpty
+                                  ? '实时转写内容 $_transcript'
+                                  : '',
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: WalnieTokens.spacingLg,
+                                  vertical: WalnieTokens.spacingMd,
+                                ),
+                                constraints: const BoxConstraints(
+                                  maxWidth: 320,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: bubbleColor,
+                                  borderRadius: BorderRadius.circular(
+                                    WalnieTokens.radiusMd,
+                                  ),
+                                ),
+                                child: Text(
+                                  _transcript.isEmpty ? ' ' : _transcript,
+                                  style: theme.textTheme.bodyLarge?.copyWith(
+                                    color: scheme.onSurface,
+                                    height: 1.3,
+                                  ),
+                                  textAlign: TextAlign.center,
+                                  maxLines: 3,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
                               ),
-                            ),
-                            child: Text(
-                              _transcript,
-                              style: theme.textTheme.bodyLarge?.copyWith(
-                                color: voiceColors.foreground,
-                                height: 1.3,
-                              ),
-                              textAlign: TextAlign.center,
-                              maxLines: 3,
-                              overflow: TextOverflow.ellipsis,
                             ),
                           ),
                         ),
-                      const SizedBox(height: WalnieTokens.spacingLg),
+                      ),
+                      const SizedBox(height: WalnieTokens.spacing2xl),
                       Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                         children: [
-                          Expanded(
-                            child: Semantics(
-                              button: true,
-                              label: '取消语音录制',
-                              child: OutlinedButton(
-                                onPressed: () =>
-                                    _finish(VoiceRecordingAction.cancel),
-                                style: OutlinedButton.styleFrom(
-                                  foregroundColor: voiceColors.foreground,
-                                  side: BorderSide(
-                                    color: voiceColors.foreground.withValues(
-                                      alpha: 0.4,
-                                    ),
-                                  ),
-                                  padding: const EdgeInsets.symmetric(
-                                    vertical: WalnieTokens.spacingMd,
-                                  ),
-                                ),
-                                child: const Text('取消'),
-                              ),
-                            ),
+                          _buildActionBubble(
+                            context: context,
+                            icon: Icons.keyboard_alt_outlined,
+                            label: '转文字',
+                            color: bubbleColor,
+                            foreground: scheme.onSurface,
+                            onTap: () => _finish(VoiceRecordingAction.toText),
+                            semanticsLabel: '切换文字输入',
                           ),
-                          const SizedBox(width: WalnieTokens.spacingSm),
-                          Expanded(
-                            child: Semantics(
-                              button: true,
-                              label: '切换文字输入',
-                              child: OutlinedButton(
-                                onPressed: () =>
-                                    _finish(VoiceRecordingAction.toText),
-                                style: OutlinedButton.styleFrom(
-                                  foregroundColor: voiceColors.foreground,
-                                  side: BorderSide(
-                                    color: voiceColors.foreground.withValues(
-                                      alpha: 0.4,
-                                    ),
-                                  ),
-                                  padding: const EdgeInsets.symmetric(
-                                    vertical: WalnieTokens.spacingMd,
-                                  ),
-                                ),
-                                child: const Text('转文字'),
-                              ),
+                          _buildActionBubble(
+                            context: context,
+                            icon: Icons.north_rounded,
+                            label: '发送',
+                            color: scheme.primary.withValues(
+                              alpha: _transcript.trim().isEmpty ? 0.3 : 0.9,
                             ),
+                            foreground: scheme.onPrimary,
+                            onTap: _transcript.trim().isEmpty
+                                ? null
+                                : () => _finish(VoiceRecordingAction.proceed),
+                            semanticsLabel: '发送语音结果',
                           ),
-                          const SizedBox(width: WalnieTokens.spacingSm),
-                          Expanded(
-                            child: Semantics(
-                              button: true,
-                              label: '发送语音结果',
-                              child: FilledButton(
-                                onPressed: _transcript.trim().isEmpty
-                                    ? null
-                                    : () =>
-                                          _finish(VoiceRecordingAction.proceed),
-                                style: FilledButton.styleFrom(
-                                  backgroundColor: voiceColors.accent,
-                                  foregroundColor: voiceColors.background,
-                                  padding: const EdgeInsets.symmetric(
-                                    vertical: WalnieTokens.spacingMd,
-                                  ),
-                                ),
-                                child: const Text('发送'),
-                              ),
-                            ),
+                          _buildActionBubble(
+                            context: context,
+                            icon: Icons.close_rounded,
+                            label: '取消',
+                            color: bubbleColor,
+                            foreground: Colors.redAccent,
+                            onTap: () => _finish(VoiceRecordingAction.cancel),
+                            semanticsLabel: '取消语音录制',
                           ),
                         ],
                       ),
@@ -475,45 +607,47 @@ class _VoiceRecordingSheetState extends State<VoiceRecordingSheet> {
                 ),
               ),
             ),
-            Positioned(
-              bottom: 0,
-              left: 0,
-              right: 0,
-              child: SafeArea(
-                top: false,
-                child: Padding(
-                  padding: const EdgeInsets.all(WalnieTokens.spacingXl),
-                  child: Semantics(
-                    button: true,
-                    label: '取消录音并返回',
-                    child: GestureDetector(
-                      onTap: () => _finish(VoiceRecordingAction.cancel),
-                      child: Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.symmetric(
-                          vertical: WalnieTokens.spacingMd,
-                        ),
-                        decoration: BoxDecoration(
-                          color: voiceColors.cancelSurface,
-                          borderRadius: BorderRadius.circular(
-                            WalnieTokens.radiusMd,
-                          ),
-                        ),
-                        child: Text(
-                          '取消并返回',
-                          textAlign: TextAlign.center,
-                          style: theme.textTheme.titleSmall?.copyWith(
-                            color: voiceColors.foreground,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildActionBubble({
+    required BuildContext context,
+    required IconData icon,
+    required String label,
+    required Color color,
+    required Color foreground,
+    String? semanticsLabel,
+    VoidCallback? onTap,
+  }) {
+    return Semantics(
+      button: true,
+      label: semanticsLabel ?? label,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          InkWell(
+            onTap: onTap,
+            borderRadius: BorderRadius.circular(38),
+            child: Ink(
+              width: 76,
+              height: 76,
+              decoration: BoxDecoration(shape: BoxShape.circle, color: color),
+              child: Icon(icon, color: foreground, size: 34),
+            ),
+          ),
+          const SizedBox(height: WalnieTokens.spacingSm),
+          Text(
+            label,
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: Theme.of(
+                context,
+              ).colorScheme.onSurface.withValues(alpha: 0.68),
+            ),
+          ),
+        ],
       ),
     );
   }

@@ -22,6 +22,8 @@ class EventRecords extends Table {
 
   TextColumn get note => text().nullable()();
 
+  TextColumn get eventMeta => text().nullable()();
+
   DateTimeColumn get createdAt => dateTime()();
 
   DateTimeColumn get updatedAt => dateTime()();
@@ -35,7 +37,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_openConnection());
 
   @override
-  int get schemaVersion => 2;
+  int get schemaVersion => 4;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -43,6 +45,37 @@ class AppDatabase extends _$AppDatabase {
       if (from < 2) {
         await m.addColumn(eventRecords, eventRecords.pumpStartAt);
         await m.addColumn(eventRecords, eventRecords.pumpEndAt);
+      }
+
+      if (from < 3) {
+        await m.addColumn(eventRecords, eventRecords.eventMeta);
+        await customStatement('''
+          UPDATE event_records
+          SET event_meta =
+            '{"schemaVersion":1,"status":"mixed","changedDiaper":true,"hasRash":false,"attachments":[]}'
+          WHERE type = 'diaper' AND event_meta IS NULL
+        ''');
+      }
+
+      if (from < 4) {
+        await customStatement('''
+          UPDATE event_records
+          SET type = 'diaper',
+              event_meta = '{"schemaVersion":1,"status":"poop","changedDiaper":true,"attachments":[]}'
+          WHERE type = 'poop'
+        ''');
+        await customStatement('''
+          UPDATE event_records
+          SET type = 'diaper',
+              event_meta = '{"schemaVersion":1,"status":"pee","changedDiaper":true,"attachments":[]}'
+          WHERE type = 'pee'
+        ''');
+        await customStatement('''
+          UPDATE event_records
+          SET event_meta =
+            '{"schemaVersion":1,"status":"mixed","changedDiaper":true,"hasRash":false,"attachments":[]}'
+          WHERE type = 'diaper' AND (event_meta IS NULL OR TRIM(event_meta) = '')
+        ''');
       }
     },
   );

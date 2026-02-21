@@ -1,5 +1,9 @@
 import 'package:baby_tracker/domain/entities/baby_event.dart';
+import 'package:baby_tracker/domain/entities/feed_reminder_surface_model.dart';
+import 'package:baby_tracker/domain/entities/reminder_policy.dart';
 import 'package:baby_tracker/domain/repositories/event_repository.dart';
+import 'package:baby_tracker/domain/repositories/reminder_policy_repository.dart';
+import 'package:baby_tracker/domain/services/feed_reminder_surface_service.dart';
 import 'package:baby_tracker/infrastructure/reminder/local_notification_service.dart';
 import 'package:baby_tracker/infrastructure/reminder/reminder_service_impl.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
@@ -49,6 +53,52 @@ class _FakeLocalNotificationService extends LocalNotificationService {
   }
 }
 
+class _FakeFeedReminderSurfaceService implements FeedReminderSurfaceService {
+  int initializeCalls = 0;
+  int hideCalls = 0;
+  final List<FeedReminderSurfaceModel> shown = <FeedReminderSurfaceModel>[];
+
+  @override
+  Future<void> initialize() async {
+    initializeCalls += 1;
+  }
+
+  @override
+  Future<void> hide() async {
+    hideCalls += 1;
+  }
+
+  @override
+  Future<void> showOrUpdate(FeedReminderSurfaceModel model) async {
+    shown.add(model);
+  }
+}
+
+class _FakeReminderPolicyRepository implements ReminderPolicyRepository {
+  _FakeReminderPolicyRepository({
+    this.currentPolicy = const ReminderPolicy(intervalHours: 4),
+  });
+
+  ReminderPolicy currentPolicy;
+  ReminderPolicy? upsertedPolicy;
+  int currentCalls = 0;
+  int upsertCalls = 0;
+
+  @override
+  Future<ReminderPolicy> getPolicy() async {
+    currentCalls += 1;
+    return currentPolicy;
+  }
+
+  @override
+  Future<ReminderPolicy> upsertPolicy(ReminderPolicy policy) async {
+    upsertCalls += 1;
+    upsertedPolicy = policy;
+    currentPolicy = policy;
+    return policy;
+  }
+}
+
 void main() {
   test(
     'scheduleNextFromLatestFeed uses wall-clock time when latest feed is utc',
@@ -58,6 +108,7 @@ void main() {
       });
       final preferences = await SharedPreferences.getInstance();
       final notificationService = _FakeLocalNotificationService();
+      final surfaceService = _FakeFeedReminderSurfaceService();
       final service = ReminderServiceImpl(
         eventRepository: _FakeEventRepository(
           latestFeed: BabyEvent(
@@ -70,6 +121,7 @@ void main() {
         ),
         sharedPreferences: preferences,
         notificationService: notificationService,
+        reminderSurfaceService: surfaceService,
       );
 
       await service.scheduleNextFromLatestFeed();
@@ -90,6 +142,16 @@ void main() {
       expect(next.hour, 23);
       expect(next.minute, 15);
       expect(next.isUtc, isFalse);
+      expect(surfaceService.hideCalls, 0);
+      expect(surfaceService.shown, hasLength(1));
+      expect(
+        surfaceService.shown.single.quickActionDeepLink,
+        'walnie://quick-add/voice-feed',
+      );
+      expect(
+        surfaceService.shown.single.feedMethod,
+        FeedMethod.bottleBreastmilk,
+      );
     },
   );
 
@@ -104,6 +166,7 @@ void main() {
         eventRepository: _FakeEventRepository(),
         sharedPreferences: preferences,
         notificationService: _FakeLocalNotificationService(),
+        reminderSurfaceService: _FakeFeedReminderSurfaceService(),
       );
 
       final next = await service.nextTriggerTime();
@@ -117,4 +180,74 @@ void main() {
       expect(next.isUtc, isFalse);
     },
   );
+
+  test(
+    'scheduleNextFromLatestFeed hides reminder surface when no latest feed',
+    () async {
+      SharedPreferences.setMockInitialValues(<String, Object>{
+        'reminder_interval_hours': 3,
+        'reminder_next_trigger_iso': '2026-02-20T23:15:00.000',
+      });
+      final preferences = await SharedPreferences.getInstance();
+      final notificationService = _FakeLocalNotificationService();
+      final surfaceService = _FakeFeedReminderSurfaceService();
+      final service = ReminderServiceImpl(
+        eventRepository: _FakeEventRepository(),
+        sharedPreferences: preferences,
+        notificationService: notificationService,
+        reminderSurfaceService: surfaceService,
+      );
+
+      await service.scheduleNextFromLatestFeed();
+
+      expect(notificationService.cancelCalls, 1);
+      expect(surfaceService.hideCalls, 1);
+      expect(surfaceService.shown, isEmpty);
+      expect(await service.nextTriggerTime(), isNull);
+    },
+  );
+
+  test('currentPolicy reads remote policy and caches locally', () async {
+    SharedPreferences.setMockInitialValues(<String, Object>{
+      'reminder_interval_hours': 3,
+    });
+    final preferences = await SharedPreferences.getInstance();
+    final remoteRepository = _FakeReminderPolicyRepository(
+      currentPolicy: const ReminderPolicy(intervalHours: 5),
+    );
+    final service = ReminderServiceImpl(
+      eventRepository: _FakeEventRepository(),
+      sharedPreferences: preferences,
+      notificationService: _FakeLocalNotificationService(),
+      reminderSurfaceService: _FakeFeedReminderSurfaceService(),
+      reminderPolicyRepository: remoteRepository,
+    );
+
+    final policy = await service.currentPolicy();
+
+    expect(policy.intervalHours, 5);
+    expect(remoteRepository.currentCalls, 1);
+    expect(preferences.getInt('reminder_interval_hours'), 5);
+  });
+
+  test('upsertPolicy syncs to remote policy repository', () async {
+    SharedPreferences.setMockInitialValues(<String, Object>{
+      'reminder_interval_hours': 3,
+    });
+    final preferences = await SharedPreferences.getInstance();
+    final remoteRepository = _FakeReminderPolicyRepository();
+    final service = ReminderServiceImpl(
+      eventRepository: _FakeEventRepository(),
+      sharedPreferences: preferences,
+      notificationService: _FakeLocalNotificationService(),
+      reminderSurfaceService: _FakeFeedReminderSurfaceService(),
+      reminderPolicyRepository: remoteRepository,
+    );
+
+    await service.upsertPolicy(const ReminderPolicy(intervalHours: 6));
+
+    expect(preferences.getInt('reminder_interval_hours'), 6);
+    expect(remoteRepository.upsertCalls, 1);
+    expect(remoteRepository.upsertedPolicy?.intervalHours, 6);
+  });
 }

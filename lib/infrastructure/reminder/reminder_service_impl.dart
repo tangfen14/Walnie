@@ -1,8 +1,12 @@
 import 'package:baby_tracker/domain/entities/baby_event.dart';
+import 'package:baby_tracker/domain/entities/feed_reminder_surface_model.dart';
 import 'package:baby_tracker/domain/entities/reminder_policy.dart';
 import 'package:baby_tracker/domain/repositories/event_repository.dart';
+import 'package:baby_tracker/domain/repositories/reminder_policy_repository.dart';
+import 'package:baby_tracker/domain/services/feed_reminder_surface_service.dart';
 import 'package:baby_tracker/domain/services/reminder_service.dart';
 import 'package:baby_tracker/infrastructure/reminder/local_notification_service.dart';
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class ReminderServiceImpl implements ReminderService {
@@ -10,9 +14,13 @@ class ReminderServiceImpl implements ReminderService {
     required EventRepository eventRepository,
     required SharedPreferences sharedPreferences,
     required LocalNotificationService notificationService,
+    required FeedReminderSurfaceService reminderSurfaceService,
+    ReminderPolicyRepository? reminderPolicyRepository,
   }) : _eventRepository = eventRepository,
        _sharedPreferences = sharedPreferences,
-       _notificationService = notificationService;
+       _notificationService = notificationService,
+       _reminderSurfaceService = reminderSurfaceService,
+       _reminderPolicyRepository = reminderPolicyRepository;
 
   static const String _intervalHoursKey = 'reminder_interval_hours';
   static const String _nextTriggerIsoKey = 'reminder_next_trigger_iso';
@@ -20,9 +28,25 @@ class ReminderServiceImpl implements ReminderService {
   final EventRepository _eventRepository;
   final SharedPreferences _sharedPreferences;
   final LocalNotificationService _notificationService;
+  final FeedReminderSurfaceService _reminderSurfaceService;
+  final ReminderPolicyRepository? _reminderPolicyRepository;
 
   @override
   Future<ReminderPolicy> currentPolicy() async {
+    if (_reminderPolicyRepository != null) {
+      try {
+        final remotePolicy = await _reminderPolicyRepository.getPolicy();
+        await _sharedPreferences.setInt(
+          _intervalHoursKey,
+          remotePolicy.intervalHours,
+        );
+        return remotePolicy;
+      } catch (error, stackTrace) {
+        debugPrint('Failed to fetch remote reminder policy: $error');
+        debugPrintStack(stackTrace: stackTrace);
+      }
+    }
+
     final interval = _sharedPreferences.getInt(_intervalHoursKey) ?? 3;
     return ReminderPolicy(intervalHours: interval);
   }
@@ -41,6 +65,21 @@ class ReminderServiceImpl implements ReminderService {
   Future<void> upsertPolicy(ReminderPolicy policy) async {
     policy.validate();
     await _sharedPreferences.setInt(_intervalHoursKey, policy.intervalHours);
+
+    if (_reminderPolicyRepository == null) {
+      return;
+    }
+
+    try {
+      final syncedPolicy = await _reminderPolicyRepository.upsertPolicy(policy);
+      await _sharedPreferences.setInt(
+        _intervalHoursKey,
+        syncedPolicy.intervalHours,
+      );
+    } catch (error, stackTrace) {
+      debugPrint('Failed to sync remote reminder policy: $error');
+      debugPrintStack(stackTrace: stackTrace);
+    }
   }
 
   @override
@@ -48,6 +87,7 @@ class ReminderServiceImpl implements ReminderService {
     final latestFeed = await _eventRepository.latest(EventType.feed);
     if (latestFeed == null) {
       await _notificationService.cancelFeedReminder();
+      await _safeHideReminderSurface();
       await _sharedPreferences.remove(_nextTriggerIsoKey);
       return;
     }
@@ -64,6 +104,15 @@ class ReminderServiceImpl implements ReminderService {
     await _sharedPreferences.setString(
       _nextTriggerIsoKey,
       scheduledAt.toIso8601String(),
+    );
+
+    await _safeShowReminderSurface(
+      FeedReminderSurfaceModel(
+        lastFeedAt: latestFeedWallClock,
+        nextReminderAt: scheduledAt,
+        feedMethod: latestFeed.feedMethod ?? FeedMethod.bottleBreastmilk,
+        quickActionDeepLink: LocalNotificationService.quickVoiceFeedPayload,
+      ),
     );
   }
 
@@ -115,5 +164,23 @@ class ReminderServiceImpl implements ReminderService {
       return null;
     }
     return _toWallClock(parsed);
+  }
+
+  Future<void> _safeShowReminderSurface(FeedReminderSurfaceModel model) async {
+    try {
+      await _reminderSurfaceService.showOrUpdate(model);
+    } catch (error, stackTrace) {
+      debugPrint('Failed to show/update reminder surface: $error');
+      debugPrintStack(stackTrace: stackTrace);
+    }
+  }
+
+  Future<void> _safeHideReminderSurface() async {
+    try {
+      await _reminderSurfaceService.hide();
+    } catch (error, stackTrace) {
+      debugPrint('Failed to hide reminder surface: $error');
+      debugPrintStack(stackTrace: stackTrace);
+    }
   }
 }

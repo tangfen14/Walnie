@@ -1,0 +1,2 @@
+Target dependency graph (1 target)
+Target 'WalnieLiveActivityExtension' in project 'Runner' (no dependencies)

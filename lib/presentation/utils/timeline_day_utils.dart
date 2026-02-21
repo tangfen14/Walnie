@@ -29,7 +29,10 @@ String formatTimelineGroupSummary(List<BabyEvent> events) {
   }
 
   if (allSameType) {
-    return '${firstType.labelZh} $count 次';
+    final label = firstType == EventType.poop || firstType == EventType.pee
+        ? EventType.diaper.labelZh
+        : firstType.labelZh;
+    return '$label $count 次';
   }
 
   return '全部记录 $count 条';
