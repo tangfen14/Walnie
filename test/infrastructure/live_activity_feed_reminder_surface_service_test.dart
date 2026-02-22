@@ -11,6 +11,7 @@ class _FakeLiveActivities extends LiveActivities {
   int createOrUpdateCalls = 0;
   int endCalls = 0;
   int endAllCalls = 0;
+  Map<String, dynamic>? lastPayload;
 
   int _activeCreateCalls = 0;
   int maxConcurrentCreateCalls = 0;
@@ -45,6 +46,7 @@ class _FakeLiveActivities extends LiveActivities {
     Duration? staleIn,
   }) async {
     createOrUpdateCalls += 1;
+    lastPayload = Map<String, dynamic>.from(data);
     _activeCreateCalls += 1;
     if (_activeCreateCalls > maxConcurrentCreateCalls) {
       maxConcurrentCreateCalls = _activeCreateCalls;
@@ -112,4 +114,30 @@ void main() {
       expect(fake.createOrUpdateCalls, 3);
     },
   );
+
+  test('showOrUpdate omits null fields and avoids file payload object', () async {
+    final fake = _FakeLiveActivities();
+    final service = LiveActivityFeedReminderSurfaceService(
+      liveActivities: fake,
+      appGroupId: 'group.com.wang.walnie.shared',
+      isIOS: () => true,
+    );
+    final now = DateTime(2026, 2, 22, 9, 0);
+
+    await service.showOrUpdate(
+      FeedReminderSurfaceModel(
+        lastFeedAt: now,
+        nextReminderAt: null,
+        feedMethod: FeedMethod.breastLeft,
+        feedAmountMl: null,
+        quickActionDeepLink: 'walnie://quick-add/voice-feed',
+      ),
+    );
+
+    final payload = fake.lastPayload;
+    expect(payload, isNotNull);
+    expect(payload!.containsKey('nextReminderAtMs'), isFalse);
+    expect(payload.containsKey('feedAmountMl'), isFalse);
+    expect(payload.containsKey('avatar'), isFalse);
+  });
 }

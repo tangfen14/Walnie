@@ -295,6 +295,23 @@ class RuleBasedIntentParser {
       }
     }
 
+    final monthDayDotClock = RegExp(
+      r'(?<!\d)(\d{1,2})月(\d{1,2})日?\s*(?:(凌晨|早上|上午|中午|下午|傍晚|晚上|夜里|半夜)\s*)?(\d{1,2})\s*[.．]\s*(\d{1,2})(?!\d)',
+    ).firstMatch(text);
+    if (monthDayDotClock != null) {
+      final parsed = _buildDateTime(
+        now: now,
+        monthText: monthDayDotClock.group(1),
+        dayText: monthDayDotClock.group(2),
+        meridiemText: monthDayDotClock.group(3),
+        hourText: monthDayDotClock.group(4),
+        minuteText: monthDayDotClock.group(5),
+      );
+      if (parsed != null) {
+        return parsed;
+      }
+    }
+
     final clock = RegExp(
       r'(?:(凌晨|早上|上午|中午|下午|傍晚|晚上|夜里|半夜)\s*)?(?<!\d)(\d{1,2})点(?:\s*(\d{1,2})分?)?',
     ).firstMatch(text);
@@ -319,6 +336,21 @@ class RuleBasedIntentParser {
         meridiemText: colonClock.group(1),
         hourText: colonClock.group(2),
         minuteText: colonClock.group(3),
+      );
+      if (parsed != null) {
+        return parsed;
+      }
+    }
+
+    final dotClock = RegExp(
+      r'(?:(凌晨|早上|上午|中午|下午|傍晚|晚上|夜里|半夜)\s*)?(?<!\d)(\d{1,2})\s*[.．]\s*(\d{1,2})(?!\d)',
+    ).firstMatch(text);
+    if (dotClock != null) {
+      final parsed = _buildDateTime(
+        now: now,
+        meridiemText: dotClock.group(1),
+        hourText: dotClock.group(2),
+        minuteText: dotClock.group(3),
       );
       if (parsed != null) {
         return parsed;

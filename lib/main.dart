@@ -37,7 +37,7 @@ Future<void> main() async {
   final liveActivities = LiveActivities();
   final reminderSurfaceService = LiveActivityFeedReminderSurfaceService(
     liveActivities: liveActivities,
-    appGroupId: 'group.com.wang.walnie.shared',
+    appGroupId: 'group.com.cc.walnie.shared',
   );
   final localNotificationService = LocalNotificationService(
     notificationsPlugin,

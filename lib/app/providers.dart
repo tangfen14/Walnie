@@ -71,7 +71,7 @@ final feedReminderSurfaceServiceProvider = Provider<FeedReminderSurfaceService>(
   (ref) {
     return LiveActivityFeedReminderSurfaceService(
       liveActivities: ref.watch(liveActivitiesProvider),
-      appGroupId: 'group.com.wang.walnie.shared',
+      appGroupId: 'group.com.cc.walnie.shared',
     );
   },
 );

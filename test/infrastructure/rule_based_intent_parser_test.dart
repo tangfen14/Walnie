@@ -54,6 +54,27 @@ void main() {
     expect(occurredAt.minute, 20);
   });
 
+  test('parses feeding command with HH.mm time', () {
+    final intent = parser.parse('5.02炫了70毫升');
+    final occurredAt = DateTime.parse(intent.payload['occurredAt'] as String);
+
+    expect(intent.intentType, VoiceIntentType.createEvent);
+    expect(intent.payload['eventType'], 'feed');
+    expect(intent.payload['amountMl'], 70);
+    expect(occurredAt.hour, 5);
+    expect(occurredAt.minute, 2);
+  });
+
+  test('parses feeding command with full-width HH．mm time', () {
+    final intent = parser.parse('5．02喂奶');
+    final occurredAt = DateTime.parse(intent.payload['occurredAt'] as String);
+
+    expect(intent.intentType, VoiceIntentType.createEvent);
+    expect(intent.payload['eventType'], 'feed');
+    expect(occurredAt.hour, 5);
+    expect(occurredAt.minute, 2);
+  });
+
   test('parses pump command with amount and duration', () {
     final intent = parser.parse('吸奶25分钟120毫升');
     final start = DateTime.parse(intent.payload['pumpStartAt'] as String);
@@ -136,6 +157,23 @@ void main() {
     );
 
     final intent = afternoonParser.parse('1点45分喂奶50ml');
+    final occurredAt = DateTime.parse(intent.payload['occurredAt'] as String);
+
+    expect(intent.intentType, VoiceIntentType.createEvent);
+    expect(intent.payload['eventType'], 'feed');
+    expect(occurredAt.year, 2026);
+    expect(occurredAt.month, 2);
+    expect(occurredAt.day, 21);
+    expect(occurredAt.hour, 13);
+    expect(occurredAt.minute, 45);
+  });
+
+  test('infers afternoon for dot clock when now is afternoon', () {
+    final afternoonParser = RuleBasedIntentParser(
+      nowProvider: () => DateTime(2026, 2, 21, 14, 5),
+    );
+
+    final intent = afternoonParser.parse('1.45喂奶50ml');
     final occurredAt = DateTime.parse(intent.payload['occurredAt'] as String);
 
     expect(intent.intentType, VoiceIntentType.createEvent);

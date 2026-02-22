@@ -19,6 +19,7 @@ import 'package:baby_tracker/presentation/widgets/voice_recording_sheet.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'package:table_calendar/table_calendar.dart';
 
 class HomePage extends ConsumerStatefulWidget {
@@ -30,9 +31,16 @@ class HomePage extends ConsumerStatefulWidget {
 
 class _HomePageState extends ConsumerState<HomePage>
     with WidgetsBindingObserver {
+  static const Duration _initialNetworkRetryDelay = Duration(seconds: 3);
+  static const int _maxInitialNetworkRetries = 5;
+
   final GlobalKey<_HomeContentState> _homeContentKey = GlobalKey();
   StreamSubscription<ExternalAction>? _externalActionSubscription;
   bool _autoRefreshRunning = false;
+  Timer? _initialNetworkRetryTimer;
+  bool _initialNetworkRetryInFlight = false;
+  int _initialNetworkRetryAttempts = 0;
+  String? _initialNetworkErrorSignature;
 
   @override
   void initState() {
@@ -48,6 +56,7 @@ class _HomePageState extends ConsumerState<HomePage>
 
   @override
   void dispose() {
+    _cancelInitialNetworkRetry(resetAttempts: true);
     WidgetsBinding.instance.removeObserver(this);
     _externalActionSubscription?.cancel();
     super.dispose();
@@ -63,6 +72,7 @@ class _HomePageState extends ConsumerState<HomePage>
   @override
   Widget build(BuildContext context) {
     final homeStateAsync = ref.watch(homeControllerProvider);
+    _syncInitialNetworkAutoRetry(homeStateAsync);
     ref.listen<AsyncValue<HomeState>>(homeControllerProvider, (prev, next) {
       if (!mounted) {
         return;
@@ -85,6 +95,17 @@ class _HomePageState extends ConsumerState<HomePage>
 
     final homeState = homeStateAsync.value;
     final hasInitialLoading = homeState == null && homeStateAsync.isLoading;
+    final isInitialError = homeState == null && homeStateAsync.hasError;
+    final initialError = homeStateAsync.error;
+    final isInitialNetworkError =
+        isInitialError &&
+        initialError != null &&
+        _isLikelyNetworkError(initialError);
+    final remainingAutoRetries =
+        (_maxInitialNetworkRetries - _initialNetworkRetryAttempts).clamp(
+          0,
+          _maxInitialNetworkRetries,
+        );
 
     return Scaffold(
       appBar: AppBar(
@@ -144,6 +165,28 @@ class _HomePageState extends ConsumerState<HomePage>
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Text('加载失败：${homeStateAsync.error}'),
+                    if (isInitialNetworkError) ...[
+                      const SizedBox(height: WalnieTokens.spacingSm),
+                      Text(
+                        remainingAutoRetries > 0
+                            ? '网络异常，正在自动重试（剩余 $remainingAutoRetries 次）'
+                            : '网络异常，自动重试已结束，请检查网络或手动重试',
+                        key: const ValueKey(
+                          'home-initial-network-auto-retry-hint',
+                        ),
+                        textAlign: TextAlign.center,
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                      const SizedBox(height: WalnieTokens.spacingSm),
+                      Text(
+                        '可前往 设置 > Walnie > 无线数据，选择 WLAN 与蜂窝移动网',
+                        key: const ValueKey(
+                          'home-initial-network-settings-hint',
+                        ),
+                        textAlign: TextAlign.center,
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                    ],
                     const SizedBox(height: WalnieTokens.spacingSm),
                     FilledButton(
                       onPressed: () => ref
@@ -151,6 +194,14 @@ class _HomePageState extends ConsumerState<HomePage>
                           .refreshData(),
                       child: const Text('重试'),
                     ),
+                    if (isInitialNetworkError) ...[
+                      const SizedBox(height: WalnieTokens.spacingXs),
+                      OutlinedButton(
+                        key: const ValueKey('open-system-settings-button'),
+                        onPressed: _openSystemSettings,
+                        child: const Text('打开系统设置'),
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -246,6 +297,94 @@ class _HomePageState extends ConsumerState<HomePage>
     } finally {
       _autoRefreshRunning = false;
     }
+  }
+
+  void _syncInitialNetworkAutoRetry(AsyncValue<HomeState> asyncState) {
+    final isInitialError = asyncState.value == null && asyncState.hasError;
+    final error = asyncState.error;
+    final shouldAutoRetry =
+        isInitialError && error != null && _isLikelyNetworkError(error);
+
+    if (!shouldAutoRetry) {
+      _cancelInitialNetworkRetry(resetAttempts: true);
+      return;
+    }
+
+    final signature = error.toString();
+    if (_initialNetworkErrorSignature != signature) {
+      _initialNetworkErrorSignature = signature;
+      _initialNetworkRetryAttempts = 0;
+    }
+
+    if (_initialNetworkRetryAttempts >= _maxInitialNetworkRetries ||
+        _initialNetworkRetryInFlight ||
+        _initialNetworkRetryTimer != null) {
+      return;
+    }
+
+    _initialNetworkRetryTimer = Timer(_initialNetworkRetryDelay, () {
+      unawaited(_runInitialNetworkRetry());
+    });
+  }
+
+  void _cancelInitialNetworkRetry({required bool resetAttempts}) {
+    _initialNetworkRetryTimer?.cancel();
+    _initialNetworkRetryTimer = null;
+    _initialNetworkRetryInFlight = false;
+    if (resetAttempts) {
+      _initialNetworkRetryAttempts = 0;
+      _initialNetworkErrorSignature = null;
+    }
+  }
+
+  Future<void> _runInitialNetworkRetry() async {
+    _initialNetworkRetryTimer?.cancel();
+    _initialNetworkRetryTimer = null;
+    if (!mounted || _initialNetworkRetryInFlight) {
+      return;
+    }
+
+    _initialNetworkRetryInFlight = true;
+    _initialNetworkRetryAttempts += 1;
+    try {
+      await ref
+          .read(homeControllerProvider.notifier)
+          .refreshData(showFailureNotice: false, showTimelineRefreshing: false);
+    } catch (_) {
+      // Keep silent; initial error card already shows retry context.
+    } finally {
+      _initialNetworkRetryInFlight = false;
+      if (mounted) {
+        _syncInitialNetworkAutoRetry(ref.read(homeControllerProvider));
+        setState(() {});
+      }
+    }
+  }
+
+  bool _isLikelyNetworkError(Object error) {
+    final text = error.toString().toLowerCase();
+    const networkHints = <String>[
+      'socketexception',
+      'clientexception',
+      'failed host lookup',
+      'connection failed',
+      'no route to host',
+      'network is unreachable',
+      'connection refused',
+      'timed out',
+      'timeoutexception',
+    ];
+    return networkHints.any(text.contains);
+  }
+
+  Future<void> _openSystemSettings() async {
+    final opened = await openAppSettings();
+    if (!opened || !mounted) {
+      return;
+    }
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('已打开系统设置')));
   }
 
   Future<void> _openEventEditor(

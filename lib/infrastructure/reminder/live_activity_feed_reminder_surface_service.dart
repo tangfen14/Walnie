@@ -5,7 +5,6 @@ import 'package:baby_tracker/domain/entities/baby_event.dart';
 import 'package:baby_tracker/domain/entities/feed_reminder_surface_model.dart';
 import 'package:baby_tracker/domain/services/feed_reminder_surface_service.dart';
 import 'package:live_activities/live_activities.dart';
-import 'package:live_activities/models/live_activity_file.dart';
 
 class LiveActivityFeedReminderSurfaceService
     implements FeedReminderSurfaceService {
@@ -63,16 +62,13 @@ class LiveActivityFeedReminderSurfaceService
 
       final payload = <String, dynamic>{
         'lastFeedAtMs': model.lastFeedAt.millisecondsSinceEpoch,
-        'nextReminderAtMs': model.nextReminderAt?.millisecondsSinceEpoch,
         'feedMethodKey': model.feedMethod.name,
         'feedMethodZh': _feedMethodZh(model.feedMethod),
         'feedMethodEn': _feedMethodEn(model.feedMethod),
-        'feedAmountMl': model.feedAmountMl,
         'quickActionUrl': model.quickActionDeepLink,
-        'avatar': LiveActivityFileFromAsset.image(
-          'assets/images/avatar_winnie.png',
-          imageOptions: LiveActivityImageFileOptions(resizeFactor: 0.38),
-        ),
+        if (model.nextReminderAt != null)
+          'nextReminderAtMs': model.nextReminderAt!.millisecondsSinceEpoch,
+        if (model.feedAmountMl != null) 'feedAmountMl': model.feedAmountMl,
       };
 
       await _liveActivities.createOrUpdateActivity(

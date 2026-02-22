@@ -26,7 +26,7 @@ extension LiveActivitiesAppAttributes {
   }
 }
 
-private let walnieSharedDefaults = UserDefaults(suiteName: "group.com.wang.walnie.shared")!
+private let walnieSharedDefaults = UserDefaults(suiteName: "group.com.cc.walnie.shared")!
 private let walnieFallbackQuickActionUrl = "walnie://quick-add/voice-feed"
 
 @available(iOSApplicationExtension 16.1, *)
