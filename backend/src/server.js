@@ -187,6 +187,14 @@ function parseEventMeta(rawEventMeta, type) {
     'eventMeta.changedDiaper',
   );
   const hasRash = parseOptionalBool(rawEventMeta.hasRash, 'eventMeta.hasRash');
+  const feedLeftDurationMin = parseOptionalNonNegativeInt(
+    rawEventMeta.feedLeftDurationMin,
+    'eventMeta.feedLeftDurationMin',
+  );
+  const feedRightDurationMin = parseOptionalNonNegativeInt(
+    rawEventMeta.feedRightDurationMin,
+    'eventMeta.feedRightDurationMin',
+  );
   const pumpLeftMl = parseOptionalNonNegativeInt(
     rawEventMeta.pumpLeftMl,
     'eventMeta.pumpLeftMl',
@@ -210,6 +218,12 @@ function parseEventMeta(rawEventMeta, type) {
 
   if (type !== 'diaper' && hasRash != null) {
     throw makeHttpError(400, 'eventMeta.hasRash is only allowed for diaper events');
+  }
+  if (type !== 'feed' && (feedLeftDurationMin != null || feedRightDurationMin != null)) {
+    throw makeHttpError(
+      400,
+      'eventMeta.feedLeftDurationMin and eventMeta.feedRightDurationMin are only allowed for feed events',
+    );
   }
   if (type !== 'pump' && (pumpLeftMl != null || pumpRightMl != null)) {
     throw makeHttpError(
@@ -236,6 +250,8 @@ function parseEventMeta(rawEventMeta, type) {
     status: statusRaw,
     changedDiaper,
     hasRash,
+    feedLeftDurationMin,
+    feedRightDurationMin,
     pumpLeftMl,
     pumpRightMl,
     attachments,

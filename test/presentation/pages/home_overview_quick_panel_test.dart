@@ -88,6 +88,32 @@ void main() {
     expect(selectedType, EventType.feed);
   });
 
+  testWidgets('tap card edge outside button still triggers filter', (
+    tester,
+  ) async {
+    EventType? selectedType;
+    EventType? addType;
+    await tester.pumpWidget(
+      buildTestWidget(
+        onSelectFilter: (type) {
+          selectedType = type;
+        },
+        onAddEvent: (type) {
+          addType = type;
+        },
+      ),
+    );
+
+    final rect = tester.getRect(
+      find.byKey(const ValueKey('overview-card-feed')),
+    );
+    await tester.tapAt(Offset(rect.left + 2, rect.bottom - 2));
+    await tester.pump();
+
+    expect(selectedType, EventType.feed);
+    expect(addType, isNull);
+  });
+
   testWidgets('tap record button triggers add callback', (tester) async {
     EventType? addType;
     await tester.pumpWidget(

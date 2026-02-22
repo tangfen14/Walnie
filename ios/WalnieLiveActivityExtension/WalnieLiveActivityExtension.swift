@@ -53,11 +53,12 @@ struct WalnieFeedReminderWidget: Widget {
         }
 
         DynamicIslandExpandedRegion(.center) {
+          let feedAt = lastFeedAt(context: context)
           VStack(alignment: .leading, spacing: 2) {
-            WalnieRelativeTimeView(lastFeedAt: lastFeedAt(context: context))
+            WalnieRelativeTimeView(lastFeedAt: feedAt)
               .font(.caption)
               .foregroundStyle(.white.opacity(0.82))
-            Text("\(lastFedTitle()): \(formattedTime(lastFeedAt: lastFeedAt(context: context)))")
+            Text(lastMealLine(lastFeedAt: feedAt))
               .font(.headline)
               .foregroundStyle(.white)
               .lineLimit(1)
@@ -83,6 +84,7 @@ private struct WalnieReminderLockscreenView: View {
   let context: ActivityViewContext<LiveActivitiesAppAttributes>
 
   var body: some View {
+    let feedAt = lastFeedAt(context: context)
     HStack(alignment: .center, spacing: 12) {
       VStack(spacing: 4) {
         WalnieAvatarView(context: context)
@@ -94,11 +96,11 @@ private struct WalnieReminderLockscreenView: View {
       }
 
       VStack(alignment: .leading, spacing: 4) {
-        WalnieRelativeTimeView(lastFeedAt: lastFeedAt(context: context))
-          .font(.subheadline)
+        WalnieRelativeTimeView(lastFeedAt: feedAt)
+          .font(.caption)
           .foregroundStyle(.white.opacity(0.82))
 
-        Text("\(lastFedTitle()): \(formattedTime(lastFeedAt: lastFeedAt(context: context)))")
+        Text(lastMealLine(lastFeedAt: feedAt))
           .font(.title3)
           .fontWeight(.semibold)
           .lineLimit(1)
@@ -108,7 +110,7 @@ private struct WalnieReminderLockscreenView: View {
           Image(systemName: "drop.fill")
             .font(.caption)
             .foregroundStyle(.orange)
-          Text(feedMethodLabel(context: context))
+          Text(feedMethodWithAmountLine(context: context))
             .font(.subheadline)
             .foregroundStyle(.white.opacity(0.92))
             .lineLimit(1)
@@ -156,9 +158,10 @@ private struct WalnieRelativeTimeView: View {
 
   var body: some View {
     TimelineView(.periodic(from: .now, by: 60)) { context in
-      Text(relativeTimeText(lastFeedAt: lastFeedAt, now: context.date))
+      Text(elapsedMealLine(lastFeedAt: lastFeedAt, now: context.date))
         .lineLimit(1)
-        .minimumScaleFactor(0.9)
+        .minimumScaleFactor(0.72)
+        .allowsTightening(true)
     }
   }
 }
@@ -222,10 +225,6 @@ private func isChineseLanguage() -> Bool {
   return language.hasPrefix("zh")
 }
 
-private func lastFedTitle() -> String {
-  return isChineseLanguage() ? "上次喂养" : "Last fed"
-}
-
 private func formattedTime(lastFeedAt: Date) -> String {
   let formatter = DateFormatter()
   formatter.locale = Locale.current
@@ -233,29 +232,68 @@ private func formattedTime(lastFeedAt: Date) -> String {
   return formatter.string(from: lastFeedAt)
 }
 
-private func relativeTimeText(lastFeedAt: Date, now: Date) -> String {
-  let seconds = max(0, Int(now.timeIntervalSince(lastFeedAt)))
-  let minutesCeil = max(1, (seconds + 59) / 60)
+@available(iOSApplicationExtension 16.1, *)
+private func feedMethodWithAmountLine(
+  context: ActivityViewContext<LiveActivitiesAppAttributes>
+) -> String {
+  let method = feedMethodLabel(context: context)
+  guard let amount = feedAmountMl(context: context) else {
+    return method
+  }
 
   if isChineseLanguage() {
-    if minutesCeil < 60 {
-      return "\(minutesCeil)分钟之前"
+    return "\(method)  \(amount)ml"
+  }
+  return "\(method)  \(amount) ml"
+}
+
+@available(iOSApplicationExtension 16.1, *)
+private func feedAmountMl(
+  context: ActivityViewContext<LiveActivitiesAppAttributes>
+) -> Int? {
+  let key = context.attributes.prefixedKey("feedAmountMl")
+  if let number = walnieSharedDefaults.object(forKey: key) as? NSNumber {
+    let value = number.intValue
+    return value > 0 ? value : nil
+  }
+  if let raw = walnieSharedDefaults.string(forKey: key), let value = Int(raw), value > 0 {
+    return value
+  }
+  return nil
+}
+
+private func lastMealLine(lastFeedAt: Date) -> String {
+  if isChineseLanguage() {
+    return "上次干饭是 \(formattedTime(lastFeedAt: lastFeedAt))"
+  }
+  return "Last meal at \(formattedTime(lastFeedAt: lastFeedAt))"
+}
+
+private func elapsedMealLine(lastFeedAt: Date, now: Date) -> String {
+  let elapsed = elapsedDurationText(lastFeedAt: lastFeedAt, now: now)
+  if isChineseLanguage() {
+    return "急急国王已经 \(elapsed) 没有干饭了"
+  }
+  return "No meal for \(elapsed)"
+}
+
+private func elapsedDurationText(lastFeedAt: Date, now: Date) -> String {
+  let seconds = max(0, Int(now.timeIntervalSince(lastFeedAt)))
+  let totalMinutes = max(1, (seconds + 59) / 60)
+
+  if isChineseLanguage() {
+    if totalMinutes < 60 {
+      return "\(totalMinutes)分钟"
     }
-    let hours = max(1, seconds / 3600)
-    if hours < 24 {
-      return "\(hours)小时之前"
-    }
-    let days = max(1, seconds / 86_400)
-    return "\(days)天之前"
+    let hours = totalMinutes / 60
+    let minutes = totalMinutes % 60
+    return "\(hours)小时\(minutes)分钟"
   }
 
-  if minutesCeil < 60 {
-    return "\(minutesCeil) min ago"
+  if totalMinutes < 60 {
+    return "\(totalMinutes) min"
   }
-  let hours = max(1, seconds / 3600)
-  if hours < 24 {
-    return "\(hours) h ago"
-  }
-  let days = max(1, seconds / 86_400)
-  return "\(days) d ago"
+  let hours = totalMinutes / 60
+  let minutes = totalMinutes % 60
+  return "\(hours)h \(minutes)m"
 }

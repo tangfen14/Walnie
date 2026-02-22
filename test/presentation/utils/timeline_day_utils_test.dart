@@ -37,6 +37,23 @@ void main() {
     expect(formatTimelineGroupSummary(events), '换尿布 2 次');
   });
 
+  test('formats pump group summary with total amount ml', () {
+    final events = [
+      BabyEvent(
+        type: EventType.pump,
+        occurredAt: DateTime(2026, 2, 20, 12, 3),
+        amountMl: 210,
+      ),
+      BabyEvent(
+        type: EventType.pump,
+        occurredAt: DateTime(2026, 2, 20, 3, 2),
+        amountMl: 115,
+      ),
+    ];
+
+    expect(formatTimelineGroupSummary(events), '吸奶2次 325ml');
+  });
+
   test('extracts event day starts for calendar markers', () {
     final events = [
       BabyEvent(type: EventType.pee, occurredAt: DateTime(2026, 2, 20, 23, 30)),

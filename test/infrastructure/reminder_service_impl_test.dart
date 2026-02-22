@@ -39,17 +39,27 @@ class _FakeLocalNotificationService extends LocalNotificationService {
   _FakeLocalNotificationService() : super(FlutterLocalNotificationsPlugin());
 
   DateTime? lastTriggerAt;
+  int scheduleCalls = 0;
   int cancelCalls = 0;
+  bool hasPendingFeedReminderValue = false;
 
   @override
   Future<DateTime> scheduleFeedReminder(DateTime triggerAt) async {
+    scheduleCalls += 1;
     lastTriggerAt = triggerAt;
+    hasPendingFeedReminderValue = true;
     return triggerAt;
   }
 
   @override
   Future<void> cancelFeedReminder() async {
     cancelCalls += 1;
+    hasPendingFeedReminderValue = false;
+  }
+
+  @override
+  Future<bool> hasPendingFeedReminder() async {
+    return hasPendingFeedReminderValue;
   }
 }
 
@@ -152,6 +162,7 @@ void main() {
         surfaceService.shown.single.feedMethod,
         FeedMethod.bottleBreastmilk,
       );
+      expect(surfaceService.shown.single.feedAmountMl, 55);
     },
   );
 
@@ -250,4 +261,35 @@ void main() {
     expect(remoteRepository.upsertCalls, 1);
     expect(remoteRepository.upsertedPolicy?.intervalHours, 6);
   });
+
+  test(
+    'overdue reminder should not be repeatedly rescheduled for unchanged latest feed',
+    () async {
+      SharedPreferences.setMockInitialValues(<String, Object>{
+        'reminder_interval_hours': 3,
+      });
+      final preferences = await SharedPreferences.getInstance();
+      final notificationService = _FakeLocalNotificationService();
+      final service = ReminderServiceImpl(
+        eventRepository: _FakeEventRepository(
+          latestFeed: BabyEvent(
+            id: 'feed-overdue',
+            type: EventType.feed,
+            occurredAt: DateTime.now().subtract(const Duration(hours: 4)),
+            feedMethod: FeedMethod.bottleBreastmilk,
+            amountMl: 70,
+          ),
+        ),
+        sharedPreferences: preferences,
+        notificationService: notificationService,
+        reminderSurfaceService: _FakeFeedReminderSurfaceService(),
+      );
+
+      await service.scheduleNextFromLatestFeed();
+      notificationService.hasPendingFeedReminderValue = false;
+      await service.scheduleNextFromLatestFeed();
+
+      expect(notificationService.scheduleCalls, 1);
+    },
+  );
 }

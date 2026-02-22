@@ -59,7 +59,8 @@ class _EventEditorSheetState extends State<EventEditorSheet> {
     final initial = widget.initialEvent;
     _eventType = initial?.type ?? widget.initialType;
     _occurredAt = initial?.occurredAt ?? DateTime.now();
-    final initialMethod = _normalizeFeedMethodForEditor(initial?.feedMethod);
+    final persistedMethod = initial?.feedMethod;
+    final initialMethod = _normalizeFeedMethodForEditor(persistedMethod);
     _feedMethod = _eventType == EventType.feed
         ? (initialMethod ?? FeedMethod.bottleBreastmilk)
         : null;
@@ -73,17 +74,17 @@ class _EventEditorSheetState extends State<EventEditorSheet> {
 
     final initialEventMeta = initial?.eventMeta;
     final initialIsBreastBased =
-        initialMethod == FeedMethod.breastLeft ||
-        initialMethod == FeedMethod.breastRight ||
-        initialMethod == FeedMethod.mixed;
+        persistedMethod == FeedMethod.breastLeft ||
+        persistedMethod == FeedMethod.breastRight ||
+        persistedMethod == FeedMethod.mixed;
     final initialLeftDuration =
         initialEventMeta?.feedLeftDurationMin ??
-        (initialIsBreastBased && initialMethod != FeedMethod.breastRight
+        (initialIsBreastBased && persistedMethod != FeedMethod.breastRight
             ? initial?.durationMin
             : null);
     final initialRightDuration =
         initialEventMeta?.feedRightDurationMin ??
-        (initialIsBreastBased && initialMethod == FeedMethod.breastRight
+        (initialIsBreastBased && persistedMethod == FeedMethod.breastRight
             ? initial?.durationMin
             : null);
     final initialPumpLeftMl = initialEventMeta?.pumpLeftMl ?? initial?.amountMl;
@@ -909,6 +910,29 @@ class _EventEditorSheetState extends State<EventEditorSheet> {
     return value;
   }
 
+  FeedMethod? _resolveFeedMethodForSave({
+    required bool isFeed,
+    required FeedMethod? selectedFeedMethod,
+    required int? leftDurationMin,
+    required int? rightDurationMin,
+  }) {
+    if (!isFeed) {
+      return null;
+    }
+
+    if (selectedFeedMethod != FeedMethod.breastLeft) {
+      return selectedFeedMethod;
+    }
+
+    final left = leftDurationMin ?? 0;
+    final right = rightDurationMin ?? 0;
+    if (right > 0 && left <= 0) {
+      return FeedMethod.breastRight;
+    }
+
+    return FeedMethod.breastLeft;
+  }
+
   Future<void> _submit() async {
     setState(() {
       _submitting = true;
@@ -933,6 +957,12 @@ class _EventEditorSheetState extends State<EventEditorSheet> {
       );
       final hasFeedSideDurations = isFeed && _showFeedSideDurations;
       final hasFeedBottleAmount = isFeed && _showFeedBottleAmount;
+      final resolvedFeedMethod = _resolveFeedMethodForSave(
+        isFeed: isFeed,
+        selectedFeedMethod: _feedMethod,
+        leftDurationMin: hasFeedSideDurations ? leftDurationMin : null,
+        rightDurationMin: hasFeedSideDurations ? rightDurationMin : null,
+      );
       final durationMin = hasFeedSideDurations
           ? _sumFeedSideDuration(leftDurationMin, rightDurationMin)
           : null;
@@ -974,7 +1004,7 @@ class _EventEditorSheetState extends State<EventEditorSheet> {
           ? widget.initialEvent!.copyWith(
               type: targetType,
               occurredAt: occurredAt,
-              feedMethod: isFeed ? _feedMethod : null,
+              feedMethod: resolvedFeedMethod,
               durationMin: isFeed ? durationMin : null,
               amountMl: (isFeed || isPump) ? resolvedAmountMl : null,
               pumpStartAt: isPump ? _pumpStartAt : null,
@@ -996,7 +1026,7 @@ class _EventEditorSheetState extends State<EventEditorSheet> {
           : BabyEvent(
               type: targetType,
               occurredAt: occurredAt,
-              feedMethod: isFeed ? _feedMethod : null,
+              feedMethod: resolvedFeedMethod,
               durationMin: isFeed ? durationMin : null,
               amountMl: (isFeed || isPump) ? resolvedAmountMl : null,
               pumpStartAt: isPump ? _pumpStartAt : null,

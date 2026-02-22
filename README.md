@@ -100,6 +100,29 @@ flutter run --dart-define=EVENT_API_BASE_URL=http://47.100.221.135:8080
 - `docs/ios-install-validation.md`
 - `docs/ios-xcode-install-checklist.md`（Xcode 逐步勾选版）
 
+### 一键切签名并安装到真机（推荐）
+
+可用一个脚本完成：
+- 切换 `Runner + WalnieLiveActivityExtension` 的 Team / Bundle ID
+- 同步 App Group（entitlements + iOS extension + Dart 配置）
+- 后端健康检查
+- `flutter clean` + `flutter pub get`
+- `flutter run --release` 安装到真机
+
+```bash
+# 安装到 cc 账号设备（指定设备 UDID）
+./scripts/ios_deploy_with_signing.sh --account cc --device <DEVICE_ID>
+
+# 安装到 wang 账号设备（不指定设备则 flutter 交互选择）
+./scripts/ios_deploy_with_signing.sh --account wang
+```
+
+查看全部参数：
+
+```bash
+./scripts/ios_deploy_with_signing.sh --help
+```
+
 VSCode 调试配置：
 - `Walnie (Cloud API)`：云端调试模式
 - `Walnie (Cloud API Release)`：云端 release 模式

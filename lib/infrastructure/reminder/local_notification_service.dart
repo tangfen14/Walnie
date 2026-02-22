@@ -136,4 +136,9 @@ class LocalNotificationService {
   Future<void> cancelFeedReminder() {
     return _plugin.cancel(feedReminderId);
   }
+
+  Future<bool> hasPendingFeedReminder() async {
+    final pending = await _plugin.pendingNotificationRequests();
+    return pending.any((item) => item.id == feedReminderId);
+  }
 }

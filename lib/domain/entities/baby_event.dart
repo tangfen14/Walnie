@@ -426,9 +426,6 @@ class BabyEvent {
       switch (feedMethod!) {
         case FeedMethod.breastLeft:
         case FeedMethod.breastRight:
-          if (!hasBreastDuration) {
-            throw const FormatException('亲喂记录需要填写左侧或右侧时长');
-          }
           break;
         case FeedMethod.bottleFormula:
         case FeedMethod.bottleBreastmilk:

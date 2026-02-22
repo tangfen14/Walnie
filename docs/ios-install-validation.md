@@ -59,6 +59,16 @@
 推荐直接按以下勾选清单执行：
 - `docs/ios-xcode-install-checklist.md`
 
+也可直接使用一键脚本（自动切签名 + 安装）：
+
+```bash
+# 安装到 cc 账号
+./scripts/ios_deploy_with_signing.sh --account cc --device <DEVICE_ID>
+
+# 安装到 wang 账号
+./scripts/ios_deploy_with_signing.sh --account wang --device <DEVICE_ID>
+```
+
 1. 打开 `ios/Runner.xcworkspace`
 2. 选择 `Runner` target
 3. 在 `Signing & Capabilities` 中选择个人 Apple ID Team

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:baby_tracker/domain/entities/baby_event.dart';
@@ -11,18 +12,23 @@ class LiveActivityFeedReminderSurfaceService
   LiveActivityFeedReminderSurfaceService({
     required LiveActivities liveActivities,
     required String appGroupId,
+    bool Function()? isIOS,
   }) : _liveActivities = liveActivities,
-       _appGroupId = appGroupId;
+       _appGroupId = appGroupId,
+       _isIOS = isIOS ?? (() => Platform.isIOS);
 
   static const String activityId = 'walnie_feed_reminder';
 
   final LiveActivities _liveActivities;
   final String _appGroupId;
+  final bool Function() _isIOS;
   bool _initialized = false;
+  bool _didInitialReconcile = false;
+  Future<void> _pendingOperation = Future<void>.value();
 
   @override
   Future<void> initialize() async {
-    if (_initialized || !Platform.isIOS) {
+    if (_initialized || !_isIOS()) {
       return;
     }
 
@@ -36,47 +42,88 @@ class LiveActivityFeedReminderSurfaceService
 
   @override
   Future<void> showOrUpdate(FeedReminderSurfaceModel model) async {
-    if (!Platform.isIOS) {
-      return;
-    }
+    return _enqueueOperation(() async {
+      if (!_isIOS()) {
+        return;
+      }
 
-    await initialize();
+      await initialize();
 
-    final supported = await _liveActivities.areActivitiesSupported();
-    final enabled = await _liveActivities.areActivitiesEnabled();
-    if (!supported || !enabled) {
-      return;
-    }
+      final supported = await _liveActivities.areActivitiesSupported();
+      if (!supported) {
+        return;
+      }
 
-    final payload = <String, dynamic>{
-      'lastFeedAtMs': model.lastFeedAt.millisecondsSinceEpoch,
-      'nextReminderAtMs': model.nextReminderAt?.millisecondsSinceEpoch,
-      'feedMethodKey': model.feedMethod.name,
-      'feedMethodZh': _feedMethodZh(model.feedMethod),
-      'feedMethodEn': _feedMethodEn(model.feedMethod),
-      'quickActionUrl': model.quickActionDeepLink,
-      'avatar': LiveActivityFileFromAsset.image(
-        'assets/images/avatar_winnie.png',
-        imageOptions: LiveActivityImageFileOptions(resizeFactor: 0.38),
-      ),
-    };
+      await _reconcileLegacyActivitiesIfNeeded();
 
-    await _liveActivities.createOrUpdateActivity(
-      activityId,
-      payload,
-      removeWhenAppIsKilled: false,
-      iOSEnableRemoteUpdates: false,
-      staleIn: const Duration(hours: 8),
-    );
+      final enabled = await _liveActivities.areActivitiesEnabled();
+      if (!enabled) {
+        return;
+      }
+
+      final payload = <String, dynamic>{
+        'lastFeedAtMs': model.lastFeedAt.millisecondsSinceEpoch,
+        'nextReminderAtMs': model.nextReminderAt?.millisecondsSinceEpoch,
+        'feedMethodKey': model.feedMethod.name,
+        'feedMethodZh': _feedMethodZh(model.feedMethod),
+        'feedMethodEn': _feedMethodEn(model.feedMethod),
+        'feedAmountMl': model.feedAmountMl,
+        'quickActionUrl': model.quickActionDeepLink,
+        'avatar': LiveActivityFileFromAsset.image(
+          'assets/images/avatar_winnie.png',
+          imageOptions: LiveActivityImageFileOptions(resizeFactor: 0.38),
+        ),
+      };
+
+      await _liveActivities.createOrUpdateActivity(
+        activityId,
+        payload,
+        removeWhenAppIsKilled: false,
+        iOSEnableRemoteUpdates: false,
+        staleIn: const Duration(hours: 8),
+      );
+    });
   }
 
   @override
   Future<void> hide() async {
-    if (!Platform.isIOS) {
+    return _enqueueOperation(() async {
+      if (!_isIOS()) {
+        return;
+      }
+      await initialize();
+      final supported = await _liveActivities.areActivitiesSupported();
+      if (!supported) {
+        return;
+      }
+      await _reconcileLegacyActivitiesIfNeeded();
+      await _liveActivities.endActivity(activityId);
+    });
+  }
+
+  Future<void> _reconcileLegacyActivitiesIfNeeded() async {
+    if (_didInitialReconcile) {
       return;
     }
-    await initialize();
-    await _liveActivities.endActivity(activityId);
+
+    _didInitialReconcile = true;
+    try {
+      // Clean up potential legacy/duplicate activities left by older builds.
+      await _liveActivities.endAllActivities();
+    } catch (_) {}
+  }
+
+  Future<void> _enqueueOperation(Future<void> Function() action) {
+    final completer = Completer<void>();
+    _pendingOperation = _pendingOperation.catchError((_) {}).then((_) async {
+      try {
+        await action();
+        completer.complete();
+      } catch (error, stackTrace) {
+        completer.completeError(error, stackTrace);
+      }
+    });
+    return completer.future;
   }
 
   String _feedMethodZh(FeedMethod method) {

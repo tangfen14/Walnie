@@ -58,6 +58,7 @@ void main() {
     expect(find.byKey(const Key('voicePulseRingInner')), findsOneWidget);
     expect(find.byKey(const Key('voicePulseRingOuter')), findsOneWidget);
     expect(find.byKey(const Key('voiceTranscriptSlot')), findsOneWidget);
+    expect(find.text('重置'), findsOneWidget);
 
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pump();

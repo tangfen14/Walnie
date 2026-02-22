@@ -121,30 +121,30 @@ class _SummaryQuickCard extends StatelessWidget {
       key: ValueKey('overview-card-${item.type.name}'),
       selected: selected,
       label: '${item.title}，${item.value}',
-      child: Container(
-        decoration: BoxDecoration(
-          color: background,
-          borderRadius: BorderRadius.circular(WalnieTokens.radiusLg),
-          border: Border.all(color: borderColor),
-          boxShadow: [
-            BoxShadow(
-              color: theme.brightness == Brightness.light
-                  ? WalnieTokens.shadowColor.withValues(alpha: 0.08)
-                  : colorScheme.surface.withValues(alpha: 0),
-              blurRadius: 16,
-              offset: const Offset(0, 8),
-            ),
-          ],
-        ),
-        child: Column(
-          children: [
-            Expanded(
-              child: Material(
-                color: Colors.transparent,
-                child: InkWell(
-                  key: ValueKey('overview-filter-${item.type.name}'),
-                  onTap: onSelectFilter,
-                  borderRadius: BorderRadius.circular(WalnieTokens.radiusLg),
+      child: Material(
+        color: Colors.transparent,
+        child: Ink(
+          decoration: BoxDecoration(
+            color: background,
+            borderRadius: BorderRadius.circular(WalnieTokens.radiusLg),
+            border: Border.all(color: borderColor),
+            boxShadow: [
+              BoxShadow(
+                color: theme.brightness == Brightness.light
+                    ? WalnieTokens.shadowColor.withValues(alpha: 0.08)
+                    : colorScheme.surface.withValues(alpha: 0),
+                blurRadius: 16,
+                offset: const Offset(0, 8),
+              ),
+            ],
+          ),
+          child: InkWell(
+            key: ValueKey('overview-filter-${item.type.name}'),
+            onTap: onSelectFilter,
+            borderRadius: BorderRadius.circular(WalnieTokens.radiusLg),
+            child: Column(
+              children: [
+                Expanded(
                   child: Padding(
                     padding: const EdgeInsets.all(WalnieTokens.spacingMd),
                     child: Column(
@@ -187,29 +187,29 @@ class _SummaryQuickCard extends StatelessWidget {
                     ),
                   ),
                 ),
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(
-                WalnieTokens.spacingSm,
-                0,
-                WalnieTokens.spacingSm,
-                WalnieTokens.spacingSm,
-              ),
-              child: SizedBox(
-                width: double.infinity,
-                child: OutlinedButton(
-                  key: ValueKey('overview-record-${item.type.name}'),
-                  onPressed: onAddEvent,
-                  style: OutlinedButton.styleFrom(
-                    minimumSize: const Size(0, 34),
-                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(
+                    WalnieTokens.spacingSm,
+                    0,
+                    WalnieTokens.spacingSm,
+                    WalnieTokens.spacingSm,
                   ),
-                  child: const Text('记录'),
+                  child: SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton(
+                      key: ValueKey('overview-record-${item.type.name}'),
+                      onPressed: onAddEvent,
+                      style: OutlinedButton.styleFrom(
+                        minimumSize: const Size(0, 34),
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      ),
+                      child: const Text('新增'),
+                    ),
+                  ),
                 ),
-              ),
+              ],
             ),
-          ],
+          ),
         ),
       ),
     );

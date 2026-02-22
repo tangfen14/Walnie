@@ -175,6 +175,13 @@ void main() {
     expect(find.text('吃奶'), findsNothing);
   });
 
+  testWidgets('home bottom bar keeps only voice action', (tester) async {
+    await pumpHome(tester);
+
+    expect(find.widgetWithText(FilledButton, '语音录入'), findsOneWidget);
+    expect(find.text('文字'), findsNothing);
+  });
+
   testWidgets('brand header shows baby age day badge', (tester) async {
     await pumpHome(tester);
 
@@ -232,5 +239,83 @@ void main() {
     notifier.emitNotice(message);
     await tester.pump();
     expect(find.text(message), findsOneWidget);
+  });
+
+  testWidgets('timeline day can collapse to summary only', (tester) async {
+    await pumpHome(tester);
+
+    await tester.tap(find.byKey(const ValueKey('overview-filter-feed')));
+    await tester.pumpAndSettle();
+    await tester.drag(find.byType(ListView), const Offset(0, -700));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('喂奶1次'), findsOneWidget);
+    expect(find.textContaining('瓶装母乳'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('折叠明细'));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('喂奶1次'), findsOneWidget);
+    expect(find.textContaining('瓶装母乳'), findsNothing);
+    expect(find.text('今天'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('展开明细'));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('瓶装母乳'), findsOneWidget);
+  });
+
+  testWidgets('pump timeline shows daily total and left-right amount details', (
+    tester,
+  ) async {
+    final now = DateTime.now();
+    final timeline = [
+      BabyEvent(
+        id: 'pump-1',
+        type: EventType.pump,
+        occurredAt: DateTime(now.year, now.month, now.day, 12, 3),
+        amountMl: 170,
+        pumpStartAt: DateTime(now.year, now.month, now.day, 12, 3),
+        pumpEndAt: DateTime(now.year, now.month, now.day, 12, 23),
+        eventMeta: const EventMeta(
+          schemaVersion: 1,
+          pumpLeftMl: 90,
+          pumpRightMl: 80,
+          attachments: [],
+        ),
+      ),
+      BabyEvent(
+        id: 'pump-2',
+        type: EventType.pump,
+        occurredAt: DateTime(now.year, now.month, now.day, 3, 2),
+        amountMl: 115,
+        pumpStartAt: DateTime(now.year, now.month, now.day, 3, 2),
+        pumpEndAt: DateTime(now.year, now.month, now.day, 3, 22),
+      ),
+    ];
+    final seed = HomeState(
+      allTimeline: timeline,
+      timeline: timeline,
+      todaySummary: const TodaySummary(
+        feedCount: 0,
+        poopCount: 0,
+        peeCount: 0,
+        diaperCount: 0,
+        pumpCount: 2,
+      ),
+      intervalHours: 3,
+      nextReminderAt: now.add(const Duration(hours: 2)),
+      filterType: EventType.pump,
+      isTimelineRefreshing: false,
+      uiNotice: null,
+      uiNoticeVersion: 0,
+    );
+
+    await pumpHome(tester, seed: seed);
+    await tester.drag(find.byType(ListView), const Offset(0, -700));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('吸奶2次 285ml'), findsOneWidget);
+    expect(find.textContaining('左90ml，右80ml'), findsOneWidget);
   });
 }

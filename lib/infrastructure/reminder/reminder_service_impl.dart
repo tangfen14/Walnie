@@ -24,6 +24,8 @@ class ReminderServiceImpl implements ReminderService {
 
   static const String _intervalHoursKey = 'reminder_interval_hours';
   static const String _nextTriggerIsoKey = 'reminder_next_trigger_iso';
+  static const String _lastReminderFingerprintKey =
+      'reminder_last_feed_fingerprint';
 
   final EventRepository _eventRepository;
   final SharedPreferences _sharedPreferences;
@@ -89,6 +91,7 @@ class ReminderServiceImpl implements ReminderService {
       await _notificationService.cancelFeedReminder();
       await _safeHideReminderSurface();
       await _sharedPreferences.remove(_nextTriggerIsoKey);
+      await _sharedPreferences.remove(_lastReminderFingerprintKey);
       return;
     }
 
@@ -97,20 +100,46 @@ class ReminderServiceImpl implements ReminderService {
     final triggerAt = latestFeedWallClock.add(
       Duration(hours: policy.intervalHours),
     );
+    final fingerprint = _buildReminderFingerprint(
+      latestFeed: latestFeed,
+      intervalHours: policy.intervalHours,
+    );
+    final previousFingerprint = _sharedPreferences.getString(
+      _lastReminderFingerprintKey,
+    );
+    final sameFingerprint = previousFingerprint == fingerprint;
+    final hasPendingReminder = await _notificationService
+        .hasPendingFeedReminder();
+    final isOverdue = !triggerAt.isAfter(DateTime.now());
 
-    final scheduledAt = await _notificationService.scheduleFeedReminder(
-      triggerAt,
-    );
-    await _sharedPreferences.setString(
-      _nextTriggerIsoKey,
-      scheduledAt.toIso8601String(),
-    );
+    DateTime? scheduledAt;
+    if (!sameFingerprint) {
+      await _notificationService.cancelFeedReminder();
+      scheduledAt = await _notificationService.scheduleFeedReminder(triggerAt);
+      await _sharedPreferences.setString(
+        _lastReminderFingerprintKey,
+        fingerprint,
+      );
+    } else if (!hasPendingReminder && !isOverdue) {
+      scheduledAt = await _notificationService.scheduleFeedReminder(triggerAt);
+    } else if (!hasPendingReminder && isOverdue) {
+      // Already reminded for this exact feed snapshot; avoid repeated spam.
+      scheduledAt = triggerAt;
+    }
+
+    if (scheduledAt != null) {
+      await _sharedPreferences.setString(
+        _nextTriggerIsoKey,
+        scheduledAt.toIso8601String(),
+      );
+    }
 
     await _safeShowReminderSurface(
       FeedReminderSurfaceModel(
         lastFeedAt: latestFeedWallClock,
         nextReminderAt: scheduledAt,
         feedMethod: latestFeed.feedMethod ?? FeedMethod.bottleBreastmilk,
+        feedAmountMl: latestFeed.amountMl,
         quickActionDeepLink: LocalNotificationService.quickVoiceFeedPayload,
       ),
     );
@@ -164,6 +193,14 @@ class ReminderServiceImpl implements ReminderService {
       return null;
     }
     return _toWallClock(parsed);
+  }
+
+  String _buildReminderFingerprint({
+    required BabyEvent latestFeed,
+    required int intervalHours,
+  }) {
+    final occurredAtWallClock = _toWallClock(latestFeed.occurredAt);
+    return '${latestFeed.id}|$intervalHours|${occurredAtWallClock.millisecondsSinceEpoch}';
   }
 
   Future<void> _safeShowReminderSurface(FeedReminderSurfaceModel model) async {

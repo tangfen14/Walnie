@@ -244,6 +244,16 @@ class _VoiceRecordingSheetState extends State<VoiceRecordingSheet> {
     ).pop(VoiceRecordingResult(action: action, transcript: _transcript));
   }
 
+  Future<void> _resetCurrentInput() async {
+    await _stopRecording();
+    if (!mounted) return;
+    setState(() {
+      _dragDistanceY = 0;
+      _transcript = '';
+    });
+    await _startRecording();
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -569,6 +579,15 @@ class _VoiceRecordingSheetState extends State<VoiceRecordingSheet> {
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                         children: [
+                          _buildActionBubble(
+                            context: context,
+                            icon: Icons.restart_alt_rounded,
+                            label: '重置',
+                            color: bubbleColor,
+                            foreground: scheme.onSurface,
+                            onTap: () => unawaited(_resetCurrentInput()),
+                            semanticsLabel: '重置本次输入',
+                          ),
                           _buildActionBubble(
                             context: context,
                             icon: Icons.keyboard_alt_outlined,

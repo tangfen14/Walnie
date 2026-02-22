@@ -14,6 +14,12 @@ int totalFeedAmountMl(List<BabyEvent> events) {
       .fold<int>(0, (sum, event) => sum + (event.amountMl ?? 0));
 }
 
+int totalPumpAmountMl(List<BabyEvent> events) {
+  return events
+      .where((event) => event.type == EventType.pump)
+      .fold<int>(0, (sum, event) => sum + (event.amountMl ?? 0));
+}
+
 String formatTimelineGroupSummary(List<BabyEvent> events) {
   final count = events.length;
   if (count == 0) {
@@ -26,6 +32,11 @@ String formatTimelineGroupSummary(List<BabyEvent> events) {
   if (allSameType && firstType == EventType.feed) {
     final totalMl = totalFeedAmountMl(events);
     return '喂奶$count次 ${totalMl}ml';
+  }
+
+  if (allSameType && firstType == EventType.pump) {
+    final totalMl = totalPumpAmountMl(events);
+    return '吸奶$count次 ${totalMl}ml';
   }
 
   if (allSameType) {

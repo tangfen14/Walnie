@@ -63,7 +63,6 @@ class _HomePageState extends ConsumerState<HomePage>
   @override
   Widget build(BuildContext context) {
     final homeStateAsync = ref.watch(homeControllerProvider);
-    final parserUseCase = ref.read(parseVoiceCommandUseCaseProvider);
     ref.listen<AsyncValue<HomeState>>(homeControllerProvider, (prev, next) {
       if (!mounted) {
         return;
@@ -167,7 +166,6 @@ class _HomePageState extends ConsumerState<HomePage>
           ),
           child: _VoiceActionBar(
             onVoiceTap: () => _handleVoiceCommand(context, ref),
-            onTextTap: () => _showTextInputDialog(context, ref, parserUseCase),
           ),
         ),
       ),
@@ -672,10 +670,9 @@ class _VoiceTextInputDialogState extends State<_VoiceTextInputDialog> {
 }
 
 class _VoiceActionBar extends StatelessWidget {
-  const _VoiceActionBar({required this.onVoiceTap, required this.onTextTap});
+  const _VoiceActionBar({required this.onVoiceTap});
 
   final VoidCallback onVoiceTap;
-  final VoidCallback onTextTap;
 
   @override
   Widget build(BuildContext context) {
@@ -694,7 +691,6 @@ class _VoiceActionBar extends StatelessWidget {
       child: Row(
         children: [
           Expanded(
-            flex: 3,
             child: Semantics(
               button: true,
               label: '语音录入',
@@ -703,22 +699,10 @@ class _VoiceActionBar extends StatelessWidget {
                 icon: const Icon(Icons.mic_rounded),
                 label: const Text('语音录入'),
                 style: FilledButton.styleFrom(
+                  minimumSize: const Size.fromHeight(48),
                   backgroundColor: voicePrimary,
                   foregroundColor: voiceForeground,
                 ),
-              ),
-            ),
-          ),
-          const SizedBox(width: WalnieTokens.spacingSm),
-          Expanded(
-            flex: 2,
-            child: Semantics(
-              button: true,
-              label: '文字输入',
-              child: OutlinedButton.icon(
-                onPressed: onTextTap,
-                icon: const Icon(Icons.keyboard_alt_outlined),
-                label: const Text('文字'),
               ),
             ),
           ),
@@ -752,6 +736,7 @@ class _HomeContent extends StatefulWidget {
 
 class _HomeContentState extends State<_HomeContent> {
   final Map<DateTime, GlobalKey> _daySectionKeys = {};
+  final Set<DateTime> _collapsedDays = <DateTime>{};
   DateTime? _selectedCalendarDay;
 
   @override
@@ -825,10 +810,13 @@ class _HomeContentState extends State<_HomeContent> {
                   .entries
                   .map((entry) {
                     final day = entry.value.dayStart;
+                    final collapsed = _collapsedDays.contains(day);
                     return _TimelineDaySection(
                       sectionKey: _sectionKeyForDay(day),
                       group: entry.value,
                       showRelativeOnFirst: entry.key == 0,
+                      collapsed: collapsed,
+                      onToggleCollapse: () => _toggleDayCollapsed(day),
                       onTapEvent: widget.onEditEvent,
                     );
                   })
@@ -843,6 +831,7 @@ class _HomeContentState extends State<_HomeContent> {
     final groups = _groupEventsByDay(timeline);
     final days = groups.map((group) => group.dayStart).toSet();
     _daySectionKeys.removeWhere((day, _) => !days.contains(day));
+    _collapsedDays.removeWhere((day) => !days.contains(day));
 
     if (days.isEmpty) {
       _selectedCalendarDay = null;
@@ -852,6 +841,14 @@ class _HomeContentState extends State<_HomeContent> {
     if (_selectedCalendarDay == null || !days.contains(_selectedCalendarDay)) {
       _selectedCalendarDay = groups.first.dayStart;
     }
+  }
+
+  void _toggleDayCollapsed(DateTime day) {
+    setState(() {
+      if (!_collapsedDays.add(day)) {
+        _collapsedDays.remove(day);
+      }
+    });
   }
 
   GlobalKey _sectionKeyForDay(DateTime day) {
@@ -1291,12 +1288,16 @@ class _TimelineDaySection extends StatelessWidget {
     required this.group,
     required this.onTapEvent,
     required this.showRelativeOnFirst,
+    required this.collapsed,
+    required this.onToggleCollapse,
   });
 
   final GlobalKey sectionKey;
   final _TimelineDayGroup group;
   final void Function(BabyEvent event) onTapEvent;
   final bool showRelativeOnFirst;
+  final bool collapsed;
+  final VoidCallback onToggleCollapse;
 
   @override
   Widget build(BuildContext context) {
@@ -1333,19 +1334,35 @@ class _TimelineDaySection extends StatelessWidget {
                           fontWeight: FontWeight.w600,
                         ),
                       ),
+                      const Spacer(),
+                      IconButton(
+                        key: ValueKey(
+                          'timeline-collapse-${group.dayStart.millisecondsSinceEpoch}',
+                        ),
+                        onPressed: onToggleCollapse,
+                        tooltip: collapsed ? '展开明细' : '折叠明细',
+                        icon: Icon(
+                          collapsed
+                              ? Icons.keyboard_arrow_down_rounded
+                              : Icons.keyboard_arrow_up_rounded,
+                        ),
+                        visualDensity: VisualDensity.compact,
+                      ),
                     ],
                   ),
-                  const SizedBox(height: WalnieTokens.spacingSm),
-                  Divider(height: 1, color: theme.colorScheme.outlineVariant),
-                  const SizedBox(height: WalnieTokens.spacingXs),
-                  ...group.events.asMap().entries.map((entry) {
-                    return _TimelineTrackItem(
-                      event: entry.value,
-                      isLast: entry.key == group.events.length - 1,
-                      showRelative: showRelativeOnFirst && entry.key == 0,
-                      onTap: () => onTapEvent(entry.value),
-                    );
-                  }),
+                  if (!collapsed) ...[
+                    const SizedBox(height: WalnieTokens.spacingSm),
+                    Divider(height: 1, color: theme.colorScheme.outlineVariant),
+                    const SizedBox(height: WalnieTokens.spacingXs),
+                    ...group.events.asMap().entries.map((entry) {
+                      return _TimelineTrackItem(
+                        event: entry.value,
+                        isLast: entry.key == group.events.length - 1,
+                        showRelative: showRelativeOnFirst && entry.key == 0,
+                        onTap: () => onTapEvent(entry.value),
+                      );
+                    }),
+                  ],
                 ],
               ),
             ),
@@ -1607,7 +1624,20 @@ String _subtitleFor(BabyEvent event) {
         '${DateFormat('HH:mm').format(event.pumpStartAt!)}-${DateFormat('HH:mm').format(event.pumpEndAt!)}',
       );
     }
-    if (event.amountMl != null) {
+
+    final leftMl = event.eventMeta?.pumpLeftMl;
+    final rightMl = event.eventMeta?.pumpRightMl;
+    final sideChunks = <String>[];
+    if (leftMl != null) {
+      sideChunks.add('左${leftMl}ml');
+    }
+    if (rightMl != null) {
+      sideChunks.add('右${rightMl}ml');
+    }
+
+    if (sideChunks.isNotEmpty) {
+      chunks.add(sideChunks.join('，'));
+    } else if (event.amountMl != null) {
       chunks.add('${event.amountMl} ml');
     }
     if (event.note != null && event.note!.isNotEmpty) {

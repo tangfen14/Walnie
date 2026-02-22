@@ -5,6 +5,15 @@
 - 使用云端后端 `http://47.100.221.135:8080`
 - 无 Apple Developer 付费账号（个人 Apple ID 签名）
 
+快速路径（推荐）：
+
+```bash
+./scripts/ios_deploy_with_signing.sh --account cc --device <DEVICE_ID>
+./scripts/ios_deploy_with_signing.sh --account wang --device <DEVICE_ID>
+```
+
+该脚本会自动同步 Runner/Extension 的签名与 App Group，避免手工切换遗漏。
+
 ## 0. 开始前检查
 
 - [ ] 手机已通过数据线连接到 Mac（建议先做第 1 台）
